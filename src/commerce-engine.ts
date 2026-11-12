@@ -30,11 +30,11 @@ export function shotSeconds(duration:Duration,count=5){
 }
 export const budgets = (duration:Duration,count=5) => shotSeconds(duration,count).map(s=>Math.floor((s-.5)*4))
 
-export function motiveFrom(value:unknown):Motive{
+export function motiveFrom(value:unknown,hookCount:1|3=3):Motive{
   if(!object(value)||!hasText(value,['buyer','trigger','alternative','dissatisfaction','benefit','concern','proof','reason','basis'])||
-    !Array.isArray(value.hooks)||value.hooks.length!==3||
+    !Array.isArray(value.hooks)||value.hooks.length!==hookCount||
     !value.hooks.every(h=>object(h)&&hasText(h,['strategy','audience','psychology','retention','visual','bridge','copy'])&&hookStrategies.includes(h.strategy as string)&&spokenLength(h.copy as string)<=10)||
-    new Set(value.hooks.map(h=>h.strategy)).size!==3||new Set(value.hooks.map(h=>h.copy)).size!==3)throw Error('模型未返回三个不同策略、符合前三秒时长的钩子，请重试。')
+    new Set(value.hooks.map(h=>h.strategy)).size!==hookCount||new Set(value.hooks.map(h=>h.copy)).size!==hookCount)throw Error('模型返回的开头不符合前三秒要求，请重试。')
   return value as Motive
 }
 
@@ -102,7 +102,7 @@ export function validCommerceMeta(value:unknown):value is CommerceMeta{
   if(!object(value)||![15,30,45].includes(value.duration as number)||!text(value.changes)||
     !Array.isArray(value.risks)||!value.risks.every(text)||!object(value.hook)||
     !hasText(value.hook,['strategy','audience','psychology','retention','visual','bridge','copy']))return false
-  try{motiveFrom(value.motive);if(value.review!==undefined)reviewFrom(value.review);return true}
+  try{motiveFrom(value.motive,object(value.motive)&&Array.isArray(value.motive.hooks)&&value.motive.hooks.length===1?1:3);if(value.review!==undefined)reviewFrom(value.review);return true}
   catch{return false}
 }
 
@@ -143,4 +143,11 @@ export function withBottomLeftCta(draft:Draft):Draft{
   if(!last)return draft
   const copy=last.copy.replace(/(?:点开|点击|点|打开|戳|进入)(?:下方的?)?(?:商品卡|商品链接|商品页)/g,'点击左下角').replace(/(?:点开|点|戳)左下角/g,'点击左下角')
   return {...draft,shots:[...draft.shots.slice(0,-1),{...last,copy:copy.includes('点击左下角')?copy:'想了解这款吹风机，点击左下角。'}]}
+}
+
+export function singleDraftFrom(value:unknown,facts:Fact[],motive:Motive){
+  const draft=draftFrom(value,facts)
+  if(draft.shots.length!==6||!draft.pitch)throw Error('模型未返回完整分镜及卖点举证信息，请重试。')
+  const hook=motive.hooks[0]
+  return withBottomLeftCta({...draft,shots:[{...draft.shots[0],visual:hook.visual,copy:hook.copy},...draft.shots.slice(1)]})
 }

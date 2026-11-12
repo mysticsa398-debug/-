@@ -80,7 +80,7 @@ export async function handleGPTScript(request,env,fetchModel=fetch){
     const upstream=await fetchModel(url,{
       method:'POST',redirect:'manual',signal:AbortSignal.any([request.signal,AbortSignal.timeout(42000)]),
       headers:{authorization:'Bearer '+apiKey,'content-type':'application/json'},
-      body:JSON.stringify({model,store:false,max_output_tokens:body.step==='commerce'?6500:body.step==='plan'?2100:4200,
+      body:JSON.stringify({model,store:false,max_output_tokens:body.step==='plan'?2100:4200,
         instructions:instructions[body.step]+memoryGuidance,input:JSON.stringify(context),
         ...(deepSeekKey?{reasoning:{effort:'none'}}:{}),
         text:{format:{type:'json_schema',name:'s8mini_'+body.step,...(deepSeekKey?{}:{strict:true}),schema:schemas[body.step]}}})

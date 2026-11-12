@@ -50,3 +50,15 @@ test('sales copy flags generic hooks, missing product introductions and producti
   const revised={...draft,shots:draft.shots.map((shot,i)=>({...shot,copy:['湿发还得赶地铁？','看这台 S8mini 吹风机','出门前先吹发根'][i]||shot.copy}))}
   assert.deepEqual(salesCopyIssues(revised,'Dr.flash S8mini 吹风机','高速吹风机'),[])
 })
+
+test('single-script generation accepts one hook and a six-shot draft',async()=>{
+  const {singleDraftFrom,validCommerceMeta}=await import('../src/commerce-engine.ts')
+  const one=motiveFrom({...motive,hooks:[motive.hooks[0]]},1)
+  const draft={...drafts[0],shots:[...drafts[0].shots,{task:'商品卡',visual:'商品卡入画',copy:'点商品卡看尺寸'}],
+    pitch:{factId:'',benefit:'收纳',proof:'实拍装包',clickReason:'查看尺寸'}}
+  const parsed=singleDraftFrom(draft,[],one)
+  assert.equal(parsed.shots.length,6)
+  assert.equal(parsed.shots.at(-1)!.copy,'点击左下角看尺寸')
+  assert.ok(validCommerceMeta({duration:30,motive:one,hook:one.hooks[0],changes:'初稿',risks:[]}))
+  assert.throws(()=>singleDraftFrom({drafts:[draft]},[],one))
+})

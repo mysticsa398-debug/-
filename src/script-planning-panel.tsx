@@ -131,7 +131,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         </details>}
       </div>
       </details>
-      {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'} provider={provider}
+      {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'}
         context={{product:product.name,productId:product.id,productCategory:product.category,
           insight:insightContext(insight),structure:strategyContext(structure),memory:useMemory?memory:[],facts:commercialFacts,materialReference}}
         restored={commerceScript&&restored?.length?{id:commerceScript.id,editions:restored}:undefined} facts={workspace.facts} save={saveCommerce} open={openCommerce}/>}
