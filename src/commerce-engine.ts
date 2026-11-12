@@ -134,6 +134,6 @@ export function salesCopyIssues(draft:Draft, product:string, category:string){
   return [
     ...(genericOpening(opening)?['开头没有说出具体场景或痛点']:[]),
     ...(!hasProduct||categoryName&&!introduction.includes(categoryName)?['第 2–3 镜口播需要介绍当前产品和品类']:[]),
-    ...draft.shots.flatMap((shot,i)=>/(?:同一?|固定|相同)(?:机位|光线|发束|测试条件)|全程同框|计时器|按下计时|记录(?:实际)?用时|结果以.{0,5}为准/.test(shot.copy)?['第 '+(i+1)+' 镜口播念出了拍摄或测试流程']:[])
+    ...draft.shots.flatMap((shot,i)=>/(?:同一?|固定|相同)(?:机位|光线|发束|测试条件)|全程同框|计时器|按下计时|记录(?:实际)?用时|同(?:一|样的?)?(?:发长|湿度|距离)|计时对比|记录[^，。！？]{0,16}的时间|结果以.{0,5}为准/.test(shot.copy)?['第 '+(i+1)+' 镜口播念出了拍摄或测试流程']:[])
   ]
 }
