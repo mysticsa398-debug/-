@@ -21,7 +21,7 @@ export type ScriptBrief = {problem:string; proof:string; focus?:TaskFocus}
 export type Version = {id:string; productId?:string; title?:string; date:string; variant:string; shots:(Shot|StudioShot)[]; evidence:Fact[]; review?:ReviewRound[]; batch?:string; material?:string; brief?:ScriptBrief; planning?:ScriptPlanning; design?:string; fixedTiming?:boolean}
 export type Script = {id:string; title:string; insight:string; facts:string[]; versions:Version[]}
 export const metricFields = {impressions:'展现',views:'5 秒完播',clicks:'点击',orders:'成交',cost:'花费（元）',revenue:'成交金额（元）',gross:'退款调整前毛利（元）',refund:'退款金额（元）'}
-export type Experiment = Record<keyof typeof metricFields,number> & {id:string; title:string; insight:string; script:string; version:string; source:string; date:string; outcome:string; notes:string; reportOnly?:boolean; reported?:Partial<Record<'hold'|'ctr'|'cvr'|'roi',number>>}
+export type Experiment = Record<keyof typeof metricFields,number> & {id:string; title:string; insight:string; script:string; version:string; source:string; date:string; outcome:string; notes:string; reportOnly?:boolean; published?:string; conditions?:string; period?:string; reported?:Partial<Record<'hold'|'hold3'|'videoCtr'|'ctr'|'cvr'|'roi',number>>}
 export type Audit = {id:string; productId?:string; date:string; script:string; version:string; input:string}
 export const defaults = {hold:15,ctr:5,cvr:10,roi:3.5,sample:1000}
 export type DB = {products?:Product[]; insights:Insight[]; facts:Fact[]; matches:Match[]; scripts:Script[]; experiments:Experiment[]; audits:Audit[]; thresholds:typeof defaults; endpoint:string; rules?:Rule[]; designs?:Design[]; creativeTests?:CreativeTest[]}
@@ -225,8 +225,9 @@ export function metrics(e:Experiment) {
   return {hold:e.reported?.hold??(e.reportOnly?null:divide(e.views*100,e.impressions)),ctr:e.reported?.ctr??(e.reportOnly?null:divide(e.clicks*100,e.impressions)),cvr:e.reported?.cvr??(e.reportOnly?null:divide(e.orders*100,e.clicks)),roi:e.reported?.roi??(e.reportOnly?null:divide(net,e.cost)),net,gross:e.gross-e.refund,contribution:e.gross-e.refund-e.cost}
 }
 export function experimentError(e:Experiment) {
+  if([e.published,e.period,e.conditions].some(v=>v!==undefined&&(typeof v!=='string'||v.length>1200)))return '请检查发布时间、统计周期和投放条件。'
   if(e.reportOnly!==undefined&&typeof e.reportOnly!=='boolean')return '报表口径无效。'
-  if(e.reported!==undefined&&(!e.reported||typeof e.reported!=='object'||Array.isArray(e.reported)||Object.entries(e.reported).some(([k,v])=>!['hold','ctr','cvr','roi'].includes(k)||typeof v!=='number'||!Number.isFinite(v)||k!=='roi'&&(v<0||v>100))))return '请检查报表录入的比率。'
+  if(e.reported!==undefined&&(!e.reported||typeof e.reported!=='object'||Array.isArray(e.reported)||Object.entries(e.reported).some(([k,v])=>!['hold','hold3','videoCtr','ctr','cvr','roi'].includes(k)||typeof v!=='number'||!Number.isFinite(v)||k!=='roi'&&(v<0||v>100))))return '请检查报表录入的比率。'
   if (!e.title.trim() || !e.source.trim()) return '请填写实验名称和可追溯的数据来源。'
   if (Object.keys(metricFields).some(k=>!Number.isFinite(e[k as keyof typeof metricFields]) || (k!=='gross' && e[k as keyof typeof metricFields]<0))) return '请检查指标数值。除毛利外，各项不能为负。'
   if (![e.impressions,e.views,e.clicks,e.orders].every(Number.isSafeInteger)) return '展现、完播、点击和成交应为整数。'

@@ -2,7 +2,7 @@ import {studioShot,videoCopy} from './studio-engine.ts'
 import {metrics,type DB,type Insight} from './domain.ts'
 
 export type MemoryEntry={kind:'规律'|'脚本'|'投放',id:string,title:string,summary:string}
-export type GenerationSource={provider:string;model:string;memory:MemoryEntry[]}
+export type GenerationSource={provider:string;model:string;memory:MemoryEntry[];promptVersion?:string}
 
 export function creativeMemory(db:DB,insight:Insight):MemoryEntry[]{
   const trim=(value:string)=>value.trim().slice(0,280)
@@ -21,8 +21,8 @@ export function creativeMemory(db:DB,insight:Insight):MemoryEntry[]{
     scripts.some(s=>s.id===e.script&&s.versions.some(v=>v.id===e.version)))
     .sort((a,b)=>b.date.localeCompare(a.date)).slice(0,3).map(e=>{
       const values=metrics(e)
-      const stats=[values.hold===null?'':'5 秒完播率 '+values.hold.toFixed(1)+'%',values.ctr===null?'':'CTR '+values.ctr.toFixed(1)+'%']
-      return {kind:'投放',id:e.id,title:e.title,summary:trim([e.date,e.impressions+' 次展现',...stats,e.notes,'观察结果，需对照复测'].filter(Boolean).join(' · '))}
+      const stats=[e.reported?.hold3===undefined?'':'前三秒留存 '+e.reported.hold3.toFixed(1)+'%',e.reported?.videoCtr===undefined?'':'视频点击 '+e.reported.videoCtr.toFixed(1)+'%',values.hold===null?'':'5 秒完播率 '+values.hold.toFixed(1)+'%',values.ctr===null?'':'CTR '+values.ctr.toFixed(1)+'%']
+      return {kind:'投放',id:e.id,title:e.title,summary:trim([e.date,e.impressions+' 次展现',...stats,e.period,e.conditions,e.notes,'观察结果，需对照复测'].filter(Boolean).join(' · '))}
     })
   return [...rules,...history,...experiments].map(entry=>({...entry,title:trim(entry.title)}))
 }

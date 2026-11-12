@@ -45,6 +45,7 @@ function App(){
   const [script,setScript]=useState('')
   const [product,setProduct]=useState('')
   const [source,setSource]=useState('')
+  const [experiment,setExperiment]=useState<{script:string;version:string}>()
   const [review,setReview]=useState(blankReview)
   const [toast,setToast]=useState(starting.error)
   const timer=useRef<number|undefined>(undefined)
@@ -60,7 +61,7 @@ function App(){
     return ()=>{removeEventListener('hashchange',change);window.clearTimeout(timer.current)}
   },[])
   function go(p:Page,tab:'script'|'video'|'agent'='script'){
-    setAdd(false);setInsight('');setScript('');setReview(blankReview);setSource('');setProduct('');setMenu(false);setPage(p);setScriptTab({view:tab})
+    setExperiment(undefined);setAdd(false);setInsight('');setScript('');setReview(blankReview);setSource('');setProduct('');setMenu(false);setPage(p);setScriptTab({view:tab})
     const target=p==='scripts'&&tab!=='script'?'scripts/'+tab:p
     if(location.hash!=='#'+target)location.hash=target
     window.scrollTo(0,0)
@@ -74,9 +75,9 @@ function App(){
     facts:<FactLibrary db={db} update={update} notify={notify} openScript={id=>{go('scripts');setProduct(id)}}/>,
     matrix:<Matrix db={db} update={update} notify={notify}/>,
     creative:<CreativeLab db={db} openPlanning={(id,structure)=>{go('scripts','agent');setInsight(id);setSource(structure)}}/>,
-    scripts:<ScriptStudio requestedTab={scriptTab} initialScript={script} initialProduct={product} initialSource={source} db={db} update={update} initialInsight={insight} goAudit={openAudit} notify={notify}/>,
+    scripts:<ScriptStudio requestedTab={scriptTab} initialScript={script} initialProduct={product} initialSource={source} db={db} update={update} initialInsight={insight} goAudit={openAudit} goExperiment={(script,version)=>{go('experiments');setExperiment({script,version})}} notify={notify}/>,
     audit:<Compliance db={db} update={update} prefill={review} notify={notify}/>,
-    experiments:<Experiments db={db} update={update} notify={notify}/>,
+    experiments:<Experiments initialReport={experiment} db={db} update={update} notify={notify}/>,
     data:<DataSettings db={db} update={update} notify={notify}/>
   }
   return <div className="app">

@@ -1,3 +1,5 @@
+import {commerceShots,dimensions,total} from './commerce-engine'
+import type {SaveCommerce} from './commerce-panel'
 import {defaultProduct,productFacts,productOf,productsFor} from './products'
 import {StoryboardEditor} from './storyboard-editor'
 import {appendStudioVersions,studioShot,videoCopy,type ReviewRound,type StudioShot} from './studio-engine'
@@ -13,7 +15,7 @@ import {ScriptPlanningPanel} from './script-planning-panel'
 import {restoreScriptPlan,type ScriptPlanning} from './script-planning'
 import {Badge,Empty,Field,PageHead,Panel} from './ui'
 
-export function ScriptStudio({db,update,initialInsight,initialScript,initialProduct,initialSource,requestedTab,notify,goAudit}:{db:DB;update:Update;initialInsight:string;initialScript?:string;initialProduct?:string;initialSource?:string;requestedTab?:{view:'script'|'video'|'agent'};notify:(m:string)=>void;goAudit:(s:string,v:string,input:string,productId:string)=>void}){
+export function ScriptStudio({db,update,initialInsight,initialScript,initialProduct,initialSource,requestedTab,notify,goAudit,goExperiment}:{db:DB;update:Update;initialInsight:string;initialScript?:string;initialProduct?:string;initialSource?:string;requestedTab?:{view:'script'|'video'|'agent'};notify:(m:string)=>void;goExperiment:(s:string,v:string)=>void;goAudit:(s:string,v:string,input:string,productId:string)=>void}){
   const [tab,setTab]=useState<'script'|'video'|'rules'|'design'>(requestedTab?.view==='video'?'video':'script')
   useEffect(()=>{if(requestedTab)setTab(requestedTab.view==='video'?'video':'script')},[requestedTab])
   const [rule,setRule]=useState<Rule>()
@@ -37,6 +39,7 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
   const [shots,setShots]=useState<StudioShot[]>(()=>selected?.versions[0]?.shots.map(studioShot)||[])
   const [generatedBrief,setGeneratedBrief]=useState<ScriptBrief|undefined>(selected?.versions[0]?.brief)
   const [material,setMaterial]=useState(selected?.versions[0]?.material||'')
+  const [materialReference,setMaterialReference]=useState<{id:string;stages:string[]}>()
   const [batch,setBatch]=useState(selected?.versions[0]?.batch||'')
   const [reviews,setReviews]=useState<ReviewRound[]>(selected?.versions[0]?.review||[])
   const [planning,setPlanning]=useState<ScriptPlanning|undefined>(selected?.versions[0]?.planning)
@@ -49,7 +52,7 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
     const s=db.scripts.find(s=>s.id===id)
     if(!s)return
     setProductId(productOf(v));setScriptId(id);setInsightId(s.insight);setTitle(v.title||s.title);setEvidence(v.evidence);setVariant(v.variant)
-    setShots(v.shots.map(studioShot));setVersionId(v.id);setPlanning(v.planning);setGeneratedBrief(v.brief)
+    setMaterialReference(undefined);setShots(v.shots.map(studioShot));setVersionId(v.id);setPlanning(v.planning);setGeneratedBrief(v.brief)
     setDesign(v.design||'');setFixedTiming(Boolean(v.fixedTiming));setMaterial(v.material||'');setBatch(v.batch||'');setReviews(v.review||[]);setDirty(false)
   }
   function chooseScript(id:string){
@@ -63,12 +66,27 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
     setVariant(next.structure.status==='报告参考'?'AI 试拍稿 · 待验证':'AI 策划稿');setVersionId('');setDesign('');setBatch('');setReviews([]);setFixedTiming(false);setDirty(true)
     requestAnimationFrame(()=>editor.current?.scrollIntoView({block:'start'}))
   }
+  const saveCommerce:SaveCommerce=(editions,generation,existingId)=>{
+    if(!insight||!editions.length)return
+    const id=existingId||uid()
+    const versions=editions.map(({draft,meta}):Version=>{
+      const shots=commerceShots(draft,meta.duration)
+      return {id:uid(),title:draft.title,productId:product.id,date:now(),variant:meta.hook.strategy+' · '+meta.changes,shots,
+        evidence:scopedFacts.filter(f=>draft.factIds.includes(f.id)&&verified(f)),fixedTiming:true,...(materialReference?.id?{material:materialReference.id}:{}),
+        brief:{problem:meta.motive.concern,proof:meta.motive.proof},
+        planning:{structure:{id:'commerce:'+meta.hook.strategy,title:meta.hook.strategy,stages:[],status:'报告参考',basis:'带货创作策略，需投放验证。',sources:[]},
+          plan:{title:draft.title,problem:meta.motive.concern,angle:meta.motive.reason,demo:meta.motive.proof,segments:draft.shots.map(s=>({name:s.task,purpose:s.visual,copy:s.copy}))},generation,commerce:meta}}
+    })
+    if(update(d=>appendStudioVersions(d,id,versions.at(-1)!.title!,insight.id,[...versions].reverse())))return id
+    notify('无法保存生成版本，请检查浏览器存储。')
+  }
   function changePlanningInsight(id:string){
     if(!insight&&dirty&&id){setInsightId(id);return}
     if(dirty&&!window.confirm('切换人群会清空当前未保存的分镜。继续？'))return
     resetDraft(id)
   }
   function resetDraft(id:string){
+    setMaterialReference(undefined)
     setShots([]);setInsightId(id);setScriptId('');setVersionId('');setPlanning(undefined);setEvidence([]);setDesign('');setMaterial('');setBatch('');setReviews([]);setGeneratedBrief(undefined);setDirty(false);setFixedTiming(false)
     setTitle(db.insights.find(i=>i.id===id)?.title||'')
   }
@@ -86,6 +104,10 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
     catch{notify('复制权限不可用，可选中文本手动复制。')}
   }
   function copyDelivery(narrationOnly=false){
+    if(planning?.commerce?.risks.length){notify('此版本有待人工复核的风险，暂不可复制交付。');return}
+    if(planning?.commerce&&!evidence.length&&!findings.length){
+      void copyText('【内部试拍稿 · 产品事实待核验】\n'+(narrationOnly?formatNarration(shots):fullScript),'内部试拍稿');return
+    }
     if(findings.length){notify('交付稿仍有规则提示，请先复核并修改。');return}
     void copyText(narrationOnly?formatNarration(shots):fullScript,narrationOnly?'视频文案':'整套视频脚本')
   }
@@ -127,7 +149,7 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
     <div hidden={tab!=='video'}><VideoWorkbench notify={notify} pickerRef={videoPicker} focus={sourceFocus} onApplyDraft={(next,newTitle,problem,proof,sourceMaterial)=>{
       if(dirty&&!window.confirm('当前有未保存的脚本草稿，使用迁移整稿替换它？'))return
       setProductId(defaultProduct.id);setDesign('');setMaterial(sourceMaterial||'');setBatch('');setReviews([]);setFixedTiming(false);setScriptId('');setVersionId('');setTitle(newTitle);setEvidence([]);setPlanning(undefined)
-      setVariant('报告迁移 · 素材拆解');setShots(next.map(studioShot));setGeneratedBrief({problem,proof});setDirty(true)
+      setMaterialReference({id:sourceMaterial||'',stages:next.slice(0,10).map(shot=>shot.part.slice(0,80))});setVariant('报告迁移 · 素材拆解');setShots(next.map(studioShot));setGeneratedBrief({problem,proof});setDirty(true)
       setTab('script');notify('已载入整套迁移脚本，请选择对应来源洞察，复核后保存为新版本。')
     }} extract={source=>{setRule(ruleDraft(source));setTab('rules')}}/></div>
     <div hidden={tab!=='rules'}><RuleLibrary db={db} update={update} draft={rule} setDraft={setRule} notify={notify} openSource={s=>{setSourceFocus({...s});setTab('video')}} openDesign={id=>{setDesignFocus('');setRuleId(id);setTab('design')}}/></div>
@@ -144,11 +166,17 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
       </aside>
       <div className="stack studio-document">
         <ScriptPlanningPanel key={product.id+'|'+(insight?.id||'none')+'|'+versionId} db={db} product={product} selectProduct={changeProduct} insight={insight} initialSource={planning?.structure.id||initialSource} savedPlanning={planning} savedShots={shots}
-          selectInsight={changePlanningInsight} accept={acceptPlannedDraft}/>
+          commerceScript={selected} materialReference={materialReference} selectInsight={changePlanningInsight} accept={acceptPlannedDraft} saveCommerce={saveCommerce} openCommerce={id=>{if(!dirty||window.confirm('切换脚本会替换未保存的分镜。继续？'))chooseScript(id)}}/>
         {!!shots.length&&<>
           <div ref={editor} className="agent-editor"><Panel title="编辑分镜">
             <Field label="脚本标题" value={title} change={v=>{setTitle(v);setDirty(true)}}/>{dirty&&<Badge tone="orange">未保存草稿</Badge>}
             <p className="muted">当前产品 · {product.name} · {variant}{evidence.length?' · 核验依据 '+evidence.map(f=>f.id+' '+f.source).join('、'):''}</p>
+            {planning?.commerce&&<details className="source-note"><summary>{planning.commerce.review?total(planning.commerce.review)+' / 100 · ':''}{planning.commerce.hook.strategy} · {planning.commerce.changes}</summary>
+              <p>{planning.commerce.motive.reason}</p>
+              {planning.commerce.review&&<ul>{planning.commerce.review.scores.map((s,i)=><li key={i}>{dimensions[i][0]} {s.score}/{dimensions[i][1]} · {s.reason}</li>)}</ul>}
+              {planning.commerce.risks.length>0&&<p role="alert">需人工复核 · {planning.commerce.risks.join('；')}</p>}
+              {!evidence.length&&<p className="notice">内部试拍稿 · 产品事实待核验</p>}
+            </details>}
             {planning?.generation&&<details className="source-note"><summary>{planning.generation.provider} · {planning.generation.model||'生成模型'} · 引用 {planning.generation.memory.length} 条创作记忆</summary>
               {planning.generation.memory.map(m=><p key={m.kind+m.id}>{m.kind} · {m.title} · {m.id}<br/>{m.summary}</p>)}
             </details>}
@@ -160,10 +188,10 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
             </details>}
             {design&&<button className="text-button" onClick={()=>{setRuleId(db.designs?.find(d=>d.id===design)?.rule||'');setDesignFocus(design);setTab('design')}}>查看关联设计与来源</button>}
             {material&&<p className="muted">关联视频素材 ID · {material}</p>}
-            <div className="inline-buttons"><button className="button" disabled={!!findings.length} onClick={()=>copyDelivery()}>复制拍摄稿</button><button className="button" disabled={!!findings.length} onClick={()=>copyDelivery(true)}>复制视频文案</button></div>
+            <div className="inline-buttons"><button className="button" disabled={!!findings.length||!!planning?.commerce?.risks.length} onClick={()=>copyDelivery()}>复制拍摄稿</button><button className="button" disabled={!!findings.length||!!planning?.commerce?.risks.length} onClick={()=>copyDelivery(true)}>复制视频文案</button></div>
             <StoryboardEditor key={versionId||scriptId||'draft'} shots={shots} material={material} audience={insight?.title||''} problem={generatedBrief?.problem||insight?.pain||''} disabled={false} onChange={next=>{setShots(next);setDirty(true)}} notify={notify}/>
 
-            <div className="inline-buttons studio-save-bar"><button className="button primary" onClick={storeVersion}>保存为新版本</button><button className="button" onClick={()=>goAudit(dirty?'':scriptId,dirty?'':versionId,findings.length?fullScript:scriptAuditText(shots),product.id)}><ShieldCheck size={16}/> 送合规审核</button><Badge tone={findings.length?'orange':'green'}>{findings.length?`${findings.length} 项规则提示`:'暂未命中规则'}</Badge></div>
+            <div className="inline-buttons studio-save-bar"><button className="button primary" onClick={storeVersion}>保存为新版本</button><button className="button" onClick={()=>goAudit(dirty?'':scriptId,dirty?'':versionId,findings.length?fullScript:scriptAuditText(shots),product.id)}><ShieldCheck size={16}/> 送合规审核</button>{scriptId&&versionId&&!dirty&&<button className="button" onClick={()=>goExperiment(scriptId,versionId)}>记录投放实验</button>}<Badge tone={findings.length?'orange':'green'}>{findings.length?`${findings.length} 项规则提示`:'暂未命中规则'}</Badge></div>
             {!!findings.length&&<p className="notice">交付待复核：{findings.map(f=>f.term).join('、')}</p>}
           </Panel></div>
           {!!reviews.length&&<Panel title="历史改写记录">

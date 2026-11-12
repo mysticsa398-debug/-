@@ -1,3 +1,4 @@
+import {validCommerceMeta,type CommerceMeta} from './commerce-engine.ts'
 import {validMemory,type GenerationSource} from './creative-memory.ts'
 import {hooks,reportUrl,type HookId} from './creative-engine.ts'
 import {compareCreativeTest,reportsFor,sameCreativeBody,testMetrics} from './creative-test.ts'
@@ -12,7 +13,7 @@ type PlanBrief={title:string;problem:string;angle:string;demo:string}
 export type ScriptSegment={name:string;purpose:string;copy?:string}
 export type ScriptPlan=PlanBrief&{segments:ScriptSegment[]}
 type LegacyScriptPlan=PlanBrief&{cta:string;beats:string[]}
-export type ScriptPlanning={structure:ScriptStructure;plan:ScriptPlan|LegacyScriptPlan;generation?:GenerationSource}
+export type ScriptPlanning={structure:ScriptStructure;plan:ScriptPlan|LegacyScriptPlan;generation?:GenerationSource;commerce?:CommerceMeta}
 export const maxScriptSegments=10
 
 const word=(s:string)=>s.trim().slice(0,360)
@@ -70,7 +71,7 @@ export function planningFacts(db:DB,insight:Insight){
 export function insightContext(insight:Insight){
   return {audience:word(insight.title),scene:word(insight.scene),buyer:word(insight.buyer),user:word(insight.user),
     problem:word(insight.pain),barrier:word(insight.barrier),motive:word(insight.motive),
-    needs:insight.needs?.slice(0,5).map(word)||[],source:word(insight.source),status:insight.status}
+    needs:insight.needs?.slice(0,5).map(word)||[],source:word(insight.source),status:insight.status,id:insight.id,age:word(insight.age),job:word(insight.job),relations:word(insight.relations),trigger:word(insight.trigger),alternatives:word(insight.alternatives),decision:word(insight.decision),confidence:insight.confidence}
 }
 
 export function strategyContext(structure:ScriptStructure){
@@ -98,7 +99,8 @@ export function restoreScriptPlan({structure,plan}:ScriptPlanning):ScriptPlan{
 
 export function validPlanning(value:unknown):value is ScriptPlanning{
   if(!value||typeof value!=='object')return false
-  const {structure:s,plan,generation}=value as ScriptPlanning
+  const {structure:s,plan,generation,commerce}=value as ScriptPlanning
+  if(commerce!==undefined&&!validCommerceMeta(commerce))return false
   if(generation!==undefined&&(!generation||!validText(generation.provider)||typeof generation.model!=='string'||generation.model.length>120||!validMemory(generation.memory)))return false
   if(!s||![s.id,s.title,s.basis].every(validText)||!['报告参考','关联投放支持','开场对照支持'].includes(s.status)
     ||!Array.isArray(s.sources)||!s.sources.every(validText)||!Array.isArray(s.stages)

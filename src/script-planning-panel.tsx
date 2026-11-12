@@ -1,5 +1,7 @@
+import {CommercePanel,type SaveCommerce} from './commerce-panel'
+import {commerceFacts,type Edition} from './commerce-engine'
 import {productsFor,productWorkspace,type Product} from './products'
-import {videoCopy} from './studio-engine'
+import {studioShot,videoCopy} from './studio-engine'
 import {creativeMemory,type GenerationSource} from './creative-memory'
 import {useEffect,useRef,useState} from 'react'
 import {ChevronRight, Plus, Sparkles} from 'lucide-react'
@@ -11,7 +13,7 @@ const api='/api/gpt-script'
 type ModelStatus='loading'|'ready'|'setup'|'sign-in'|'forbidden'|'offline'
 const labels={title:'策划标题',problem:'购买顾虑',angle:'脚本切口',demo:'实拍演示与观察点'} as const
 
-export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsight,initialSource,savedPlanning,savedShots,accept}:{db:DB;product:Product;selectProduct:(id:string)=>void;insight?:Insight;selectInsight:(id:string)=>void;initialSource?:string;savedPlanning?:ScriptPlanning;savedShots?:ReturnType<typeof scriptFromModel>['shots'];accept:(draft:ReturnType<typeof scriptFromModel>,planning:ScriptPlanning,facts:Fact[])=>void}){
+export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsight,initialSource,savedPlanning,savedShots,commerceScript,materialReference,accept,saveCommerce,openCommerce}:{db:DB;product:Product;selectProduct:(id:string)=>void;insight?:Insight;selectInsight:(id:string)=>void;initialSource?:string;savedPlanning?:ScriptPlanning;savedShots?:ReturnType<typeof scriptFromModel>['shots'];commerceScript?:DB['scripts'][number];materialReference?:{id:string;stages:string[]};saveCommerce:SaveCommerce;openCommerce:(id:string)=>void;accept:(draft:ReturnType<typeof scriptFromModel>,planning:ScriptPlanning,facts:Fact[])=>void}){
   const workspace=productWorkspace(db,product.id)
   const structures=insight?scriptStructures(workspace,insight.id):[]
   const [source,setSource]=useState(initialSource||'')
@@ -31,6 +33,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   const plan=result?.structure===structure?.id?result?.plan:undefined
   const timing=plan?plannedTiming(plan.segments):[]
   const memory=insight?creativeMemory(workspace,insight):[]
+  const commercialFacts=insight?commerceFacts(workspace,insight):[]
   const evidence=insight?planningFacts(workspace,insight):[]
   useEffect(()=>{
     const controller=new AbortController()
@@ -45,6 +48,13 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
       .catch(()=>{if(!controller.signal.aborted)setStatus('offline')})
     return ()=>{controller.abort();active.current?.abort()}
   },[])
+  const restored=commerceScript?.versions.slice().reverse().flatMap((version):Edition[]=>{
+    const meta=version.planning?.commerce
+    if(!meta||version.shots.length!==5)return []
+    const shots=version.shots.map(shot=>({task:shot.part,visual:'content' in shot?shot.content:shot.visual,copy:videoCopy(studioShot(shot))}))
+    return [{meta,draft:{title:version.title||commerceScript.title,reason:meta.motive.reason,shots,
+      factIds:version.evidence.filter(f=>commercialFacts.some(approved=>approved.id===f.id)).map(f=>f.id)}}]
+  })
   const locked=Boolean(pending)
   const referenceOnly=structure?.status==='报告参考'
   const scriptBlocker=!plan||!validScriptPlan(plan)?'请补齐策划字段以及每一段的名称和任务。'
@@ -127,10 +137,16 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         <label className="row"><input type="checkbox" checked={useMemory} onChange={e=>setUseMemory(e.target.checked)}/> 将这些摘要用于 AI 策划和写稿</label>
         {memory.length?memory.map(m=><p key={m.kind+m.id}><b>{m.kind} · {m.title}</b><br/>{m.summary}</p>):<p className="muted">审核相关规律、保存脚本或录入关联报表后，下次创作会更新这里的参考。</p>}
       </details>
-        {structure&&<details className="source-note"><summary>已核验产品事实 · {evidence.length} 项</summary>
-          <p className="muted">{evidence.length?evidence.map(f=>f.id+' '+f.wording).join('、'):'暂无匹配的已核验产品事实。稿件可写可见动作与实拍观察点。'}</p>
+        {structure&&<details className="source-note"><summary>已核验产品事实 · {commercialFacts.length} 项</summary>
+          <p className="muted">{commercialFacts.length?commercialFacts.map(f=>f.id+' '+f.wording).join('、'):'暂无匹配的已核验产品事实。仅生成内部试拍稿。请到产品库核对在售 SKU、原始来源、核验日期与合规措辞。'}</p>
         </details>}
       </div>
+      {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'} provider={provider}
+        context={{product:product.name,productId:product.id,productCategory:product.category,productDemo:product.demo,
+          insight:insightContext(insight),structure:strategyContext(structure),memory:useMemory?memory:[],facts:commercialFacts,materialReference}}
+        restored={commerceScript&&restored?.length?{id:commerceScript.id,editions:restored}:undefined} facts={workspace.facts} save={saveCommerce} open={openCommerce}/>}
+      {status!=='ready'&&<p className="muted" role="status">{{loading:'正在检查模型连接。',setup:'站点 AI 等待管理员配置。','sign-in':'登录后即可生成。',forbidden:'此账号尚未开通生成权限。',offline:'暂未连到站点 AI 服务。'}[status]} {status==='sign-in'&&<a href={'/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.hash)}>使用 ChatGPT 登录</a>}</p>}
+      <details className="source-note"><summary>单稿策划与手动编辑</summary>
       <div className="inline-buttons planning-actions">
         <button className="button primary" disabled={!insight||!structure||status!=='ready'} onClick={()=>void run('plan')}>
           <Sparkles size={16}/> {pending==='plan'?'AI 正在策划…':plan?`用 ${provider||'AI'} 重做策划`:`用 ${provider||'AI'} 生成策划`}
@@ -179,6 +195,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
       </>}
       {pending&&<p role="status">正在请求模型，完成后结果会出现在工作台。</p>}
       {error&&<p className="notice" role="alert">{error}</p>}
+      </details>
     </fieldset>
   </Panel>
 }

@@ -1,0 +1,39 @@
+import {test} from 'node:test'
+import assert from 'node:assert/strict'
+import {commerceFacts,commerceRisks,commerceShots,motiveFrom,reviewFrom,total,validateBatch,dimensions,type Draft} from '../src/commerce-engine.ts'
+import {initial} from '../src/domain.ts'
+import {productWorkspace,defaultProduct} from '../src/products.ts'
+import {insightContext} from '../src/script-planning.ts'
+
+const hook=(strategy:string,copy:string)=>({strategy,copy,audience:'家庭青年',psychology:'收纳负担',retention:'看包能否合上',visual:'拍装满衣服的包',bridge:'切换到实际装包'})
+const motive=motiveFrom({buyer:'家庭青年',trigger:'出游前理行李',alternative:'酒店吹风机',dissatisfaction:'不熟悉',benefit:'出游家用共用',concern:'包能不能合上',proof:'实拍装包',reason:'一件设备应对出行与家用',basis:'创意假设',hooks:[hook('场景冲突','包塞满了？'),hook('痛点共鸣','出门还得带？'),hook('价值悬念','还剩一个角！')]})
+const drafts:Draft[]=motive.hooks.map((h,i)=>({title:h.strategy,reason:motive.reason,factIds:[],shots:[h.copy,...[
+  ['把收纳位留出来','看看带线怎么摆','回家取出照常用','点商品卡看详情'],
+  ['酒店设备不熟悉','先拍装包的顺序','到家再试手感','点商品卡核对'],
+  ['合包才算装得下','衣物和线材分开','拿出来看看档位','点商品卡挑选']
+][i]].map(copy=>({task:'实物观察',visual:'实拍原物',copy}))}))
+
+test('three hooks must use different strategies and three scripts must differ beyond the opening',()=>{
+  assert.equal(validateBatch({drafts},[],motive).length,3)
+  assert.throws(()=>validateBatch({drafts:[drafts[0],{...drafts[0],shots:[drafts[1].shots[0],...drafts[0].shots.slice(1)]},drafts[2]]},[],motive),/正文过于相似/)
+  assert.throws(()=>motiveFrom({...motive,hooks:[motive.hooks[0],motive.hooks[0],motive.hooks[2]]}))
+})
+test('verified facts are product scoped and claims without evidence remain blocked',()=>{
+  const db=initial()
+  const workspace=productWorkspace(db,defaultProduct.id)
+  assert.equal(commerceFacts(workspace,db.insights[0]).length,0)
+  assert.match(insightContext(db.insights[1]).trigger,/出门/)
+  assert.match(insightContext(db.insights[0]).trigger,/行李/)
+  const draft={...drafts[0],title:'295g，限时优惠，到手价199元'}
+  assert.match(commerceRisks(draft,workspace.facts,30).join(' '),/295g/)
+  assert.match(commerceRisks(draft,workspace.facts,30).join(' '),/199元/)
+})
+test('five shots fit the requested timeline and review scores respect dimension bounds',()=>{
+  for(const duration of [15,30,45] as const){
+    assert.equal(commerceShots(drafts[0],duration)[0].time,'0–3 秒')
+    assert.match(commerceShots(drafts[0],duration).at(-1)!.time,new RegExp(duration+' 秒$'))
+  }
+  const review={scores:dimensions.map(([,score])=>({score,reason:'测试诊断'})),risks:[],changes:'保留'}
+  assert.equal(total(reviewFrom(review)),100)
+  assert.throws(()=>reviewFrom({...review,scores:[{score:21,reason:'超出上限'},...review.scores.slice(1)]}))
+})
