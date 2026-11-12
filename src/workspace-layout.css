@@ -108,3 +108,18 @@ body { background: #f5f5f7; color: var(--ink); }
 
 .commerce-settings { grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr); align-items: end; }
 @media (max-width: 540px) { .commerce-settings { grid-template-columns: minmax(0, 1fr); } }
+
+.planning-confirm {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 14px;
+  background: #f5f5f7;
+  border-radius: 12px;
+}
+.planning-confirm-head { display: flex; align-items: center; gap: 12px; }
+.planning-confirm h3, .planning-confirm p { margin: 0; }
+.planning-confirm .field { width: min(100%, 36rem); margin: 0; }
+.planning-facts { border: 0; padding: 0; margin: 0; }
+.planning-facts legend { font-weight: 600; margin-bottom: 4px; }
+.planning-facts .row { min-height: 36px; }

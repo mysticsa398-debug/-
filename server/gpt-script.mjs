@@ -40,6 +40,7 @@ function memoryEntries(memory){
     ['id','title','summary'].every(k=>typeof e[k]==='string'&&e[k].length<=320)&&e.id.trim())
     .map(({kind,id,title,summary})=>({kind,id,title,summary}))
 }
+const sceneGuidance=' confirmedScene 是用户为本稿确认的场景，以此为准。历史记忆、参考素材和产品演示说明只供借鉴。facts 仅包含用户确认可引用的产品规格，不从其他输入补入参数。'
 const memoryGuidance=' 创作记忆是参考资料。已审核规律是待应用机制，历史脚本仅作对照，投放记录只说明观察，不能由此归因或直接承诺结果。勿照抄旧稿。只在与当前人群、结构和痛点有关时引用。'
 
 export async function handleGPTScript(request,env,fetchModel=fetch){
@@ -81,7 +82,7 @@ export async function handleGPTScript(request,env,fetchModel=fetch){
       method:'POST',redirect:'manual',signal:AbortSignal.any([request.signal,AbortSignal.timeout(42000)]),
       headers:{authorization:'Bearer '+apiKey,'content-type':'application/json'},
       body:JSON.stringify({model,store:false,max_output_tokens:body.step==='plan'?2100:4200,
-        instructions:instructions[body.step]+memoryGuidance,input:JSON.stringify(context),
+        instructions:instructions[body.step]+sceneGuidance+memoryGuidance,input:JSON.stringify(context),
         ...(deepSeekKey?{reasoning:{effort:'none'}}:{}),
         text:{format:{type:'json_schema',name:'s8mini_'+body.step,...(deepSeekKey?{}:{strict:true}),schema:schemas[body.step]}}})
     })

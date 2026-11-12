@@ -6,7 +6,7 @@ import {creativeMemory,type GenerationSource} from './creative-memory'
 import {useEffect,useRef,useState} from 'react'
 import {Plus, Sparkles} from 'lucide-react'
 import {type DB,type Fact,type Insight} from './domain'
-import {insightContext,maxScriptSegments,plannedTiming,planningFacts,restoreScriptPlan,scriptFromModel,scriptStructures,strategyContext,validScriptPlan,type ScriptPlan,type ScriptPlanning,type ScriptSegment} from './script-planning'
+import {insightContext,maxScriptSegments,plannedTiming,restoreScriptPlan,scriptFromModel,scriptStructures,strategyContext,validScriptPlan,type ScriptPlan,type ScriptPlanning,type ScriptSegment} from './script-planning'
 import {Badge,Field,Panel} from './ui'
 
 const api='/api/gpt-script'
@@ -23,6 +23,9 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   const [provider,setProvider]=useState<string>()
   const [pending,setPending]=useState<'plan'|'script'>()
   const [error,setError]=useState('')
+  const [scene,setScene]=useState(insight?.scene||'')
+  const [excludedFacts,setExcludedFacts]=useState<string[]>([])
+  const [confirmedKey,setConfirmedKey]=useState('')
   const [result,setResult]=useState<{structure:string;plan:ScriptPlan}|undefined>(()=>{
     if(!savedPlanning)return
     const plan=restoreScriptPlan(savedPlanning)
@@ -34,7 +37,13 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   const timing=plan?plannedTiming(plan.segments):[]
   const memory=insight?creativeMemory(workspace,insight):[]
   const commercialFacts=insight?commerceFacts(workspace,insight):[]
-  const evidence=insight?planningFacts(workspace,insight):[]
+  const selectedFacts=commercialFacts.filter(f=>!excludedFacts.includes(f.id))
+  const confirmationKey=JSON.stringify({product:product.id,name:product.name,category:product.category,insight:insight?.id,
+    structure:structure?.id,scene:scene.trim(),facts:selectedFacts})
+  const confirmed=Boolean(insight&&structure&&scene.trim()&&confirmedKey===confirmationKey)
+  const evidence=workspace.facts.filter(f=>selectedFacts.some(item=>item.id===f.id))
+  const modelFacts=workspace.facts.map(f=>evidence.some(item=>item.id===f.id)?f:{...f,status:'待核验'})
+  const modelInsight=insight?{...insightContext(insight),scene:scene.trim()}:undefined
   useEffect(()=>{
     const controller=new AbortController()
     fetch(api,{signal:controller.signal,cache:'no-store'})
@@ -57,10 +66,10 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   })
   const locked=Boolean(pending)
   const referenceOnly=structure?.status==='报告参考'
-  const scriptBlocker=!plan||!validScriptPlan(plan)?'请补齐策划字段以及每一段的名称和任务。'
+  const scriptBlocker=!confirmed?'请先确认场景与产品参数。':!plan||!validScriptPlan(plan)?'请补齐策划字段以及每一段的名称和任务。'
     :(status!=='ready'?'生成服务就绪后即可写稿。':'')
   async function run(step:'plan'|'script'){
-    if(active.current||!insight||!structure||status!=='ready'
+    if(active.current||!confirmed||!insight||!structure||status!=='ready'
       ||step==='script'&&scriptBlocker)return
     const references=useMemory?memory:[]
     const controller=new AbortController()
@@ -68,7 +77,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
     try{
       const response=await fetch(api,{method:'POST',headers:{'Content-Type':'application/json'},
         signal:AbortSignal.any([controller.signal,AbortSignal.timeout(48000)]),
-        body:JSON.stringify({step,context:{product:product.name.slice(0,200),productCategory:product.category.slice(0,120),productDemo:product.demo.slice(0,1200),insight:insightContext(insight),
+        body:JSON.stringify({step,context:{product:product.name.slice(0,200),productCategory:product.category.slice(0,120),productDemo:product.demo.slice(0,1200),insight:modelInsight,confirmedScene:scene.trim(),
           structure:strategyContext(structure),memory:references,facts:evidence.map(({id,wording,source,date})=>({id,wording,source,date})),
           ...(step==='script'?{plan}:plan?{previousStructure:plan.segments}:{})}})})
       const data=await response.json().catch(()=>null)
@@ -78,7 +87,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         setResult({structure:structure.id,plan:data.result})
       }else if(plan){
         const generation:GenerationSource={provider:data?.generation?.provider||provider||'模型',model:data?.generation?.model||'',memory:references}
-        const draft=scriptFromModel(data?.result,plan,[...workspace.facts.filter(f=>!evidence.some(approved=>approved.id===f.id)).map(f=>({...f,status:'待核验'})),...evidence])
+        const draft=scriptFromModel(data?.result,plan,modelFacts)
         const written={...plan,segments:plan.segments.map((segment,i)=>({...segment,purpose:draft.shots[i].content,copy:videoCopy(draft.shots[i])}))}
         setResult({structure:structure.id,plan:written})
         accept(draft,{structure,plan:written,generation},evidence)
@@ -88,9 +97,9 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   }
   function changeSource(next:string){setSource(next);setResult(undefined);setError('')}
   function manualPlan(){
-    if(!insight||!structure)return
+    if(!confirmed||!insight||!structure)return
     setError('')
-    setResult({structure:structure.id,plan:{title:insight.title+' · '+product.name+' 脚本策划',problem:insight.pain||insight.barrier,angle:'',demo:product.demo.slice(0,1200),segments:[{name:'',purpose:''}]}})
+    setResult({structure:structure.id,plan:{title:insight.title+' · '+product.name+' 脚本策划',problem:insight.pain||insight.barrier,angle:'',demo:scene.trim(),segments:[{name:'',purpose:''}]}})
   }
   function updateSegments(segments:ScriptSegment[]){
     if(plan&&structure)setResult({structure:structure.id,plan:{...plan,segments}})
@@ -114,7 +123,25 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         <Field label="人群洞察" value={insight?.id||''} options={[{value:'',label:'选择一个人群'},...db.insights.map(i=>({value:i.id,label:i.title}))]} change={selectInsight}/>
         {structure&&<Field label="结构来源" value={structure.id} options={structures.map(s=>({value:s.id,label:s.status+' · '+s.title}))} change={changeSource}/>}
       </div>
-      {insight&&<p className="planning-scene"><strong>{insight.scene||insight.title}</strong> · {insight.pain||insight.barrier||insight.status}</p>}
+      {insight&&structure&&<section className="planning-confirm" aria-labelledby="planning-confirm-title">
+        <div className="planning-confirm-head">
+          <h3 id="planning-confirm-title">确认场景与规格</h3>
+          {confirmed&&<button type="button" className="text-button" onClick={()=>setConfirmedKey('')}>修改</button>}
+        </div>
+        {confirmed?<p className="planning-scene" role="status">
+          {scene.trim()} · {selectedFacts.length?selectedFacts.map(f=>f.wording).join('、'):'仅使用场景与实拍'}
+        </p>:<>
+          <p className="muted">{product.name} · {product.category} <a href="#facts">查看产品库</a></p>
+          <label className="field"><span>本稿使用场景</span><input maxLength={360} value={scene} onChange={e=>{setScene(e.target.value);setResult(undefined)}}/></label>
+          {commercialFacts.length>0?<fieldset className="planning-facts"><legend>可引用的已核验参数与规格</legend>
+            {commercialFacts.map(f=><label className="row" key={f.id}><input type="checkbox" checked={!excludedFacts.includes(f.id)}
+              onChange={e=>{const checked=e.target.checked;setResult(undefined);setExcludedFacts(previous=>checked?previous.filter(id=>id!==f.id):[...previous,f.id])}}/>
+              <span>{f.wording}</span>
+            </label>)}
+          </fieldset>:<p className="muted">暂无可引用的已核验参数，可先确认场景并生成试拍稿。</p>}
+          <button type="button" className="button primary" disabled={!scene.trim()} onClick={()=>{setConfirmedKey(confirmationKey);setError('')}}>确认场景与规格</button>
+        </>}
+      </section>}
       <details className="source-note planning-reference"><summary>策划资料</summary>
       {structure&&<div>
         <p>{structure.basis}</p>
@@ -131,17 +158,17 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         </details>}
       </div>
       </details>
-      {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'}
+      {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'&&confirmed}
         context={{product:product.name,productId:product.id,productCategory:product.category,
-          insight:insightContext(insight),structure:strategyContext(structure),memory:useMemory?memory:[],facts:commercialFacts,materialReference}}
-        restored={commerceScript&&restored?.length?{id:commerceScript.id,editions:restored}:undefined} facts={workspace.facts} save={saveCommerce} open={openCommerce}/>}
+          insight:modelInsight,confirmedScene:scene.trim(),structure:strategyContext(structure),memory:useMemory?memory:[],facts:selectedFacts,materialReference}}
+        restored={commerceScript&&restored?.length?{id:commerceScript.id,editions:restored}:undefined} facts={modelFacts} save={saveCommerce} open={openCommerce}/>}
       {status!=='ready'&&<p className="muted" role="status">{{loading:'正在检查模型连接。',setup:'站点 AI 等待管理员配置。','sign-in':'登录后即可生成。',forbidden:'此账号尚未开通生成权限。',offline:'暂未连到站点 AI 服务。'}[status]} {status==='sign-in'&&<a href={'/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.hash)}>使用 ChatGPT 登录</a>}</p>}
       <details className="source-note"><summary>单稿策划与手动编辑</summary>
       <div className="inline-buttons planning-actions">
-        <button className="button primary" disabled={!insight||!structure||status!=='ready'} onClick={()=>void run('plan')}>
+        <button className="button primary" disabled={!confirmed||status!=='ready'} onClick={()=>void run('plan')}>
           <Sparkles size={16}/> {pending==='plan'?'AI 正在策划…':plan?`用 ${provider||'AI'} 重做策划`:`用 ${provider||'AI'} 生成策划`}
         </button>
-        <button className="button" disabled={!insight||!structure||!!plan} onClick={manualPlan}>手动建立策划</button>
+        <button className="button" disabled={!confirmed||!!plan} onClick={manualPlan}>手动建立策划</button>
         {status==='sign-in'&&<a className="button" href={'/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.hash)} target="_top">使用 ChatGPT 登录</a>}
       </div>
       {status==='ready'&&provider&&<p className="muted">当前生成服务 · {provider}</p>}

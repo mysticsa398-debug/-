@@ -2,7 +2,7 @@ import {useEffect,useRef,useState} from 'react'
 import {Sparkles} from 'lucide-react'
 import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,genericOpening,motiveFrom,narratives,reviewFrom,rewritePositions,salesCopyIssues,spokenLength,total,singleDraftFrom,withBottomLeftCta,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
 import type {GenerationSource} from './creative-memory'
-import type {Fact} from './domain'
+import {verified,type Fact} from './domain'
 import {Field} from './ui'
 
 export type SaveCommerce = (editions:Edition[],generation:GenerationSource,scriptId?:string)=>string|undefined
@@ -52,7 +52,7 @@ export function CommercePanel({ready,context,facts,save,open,restored}:{ready:bo
     if(positions.length<draft.shots.length){
       next.title=draft.title;next.reason=draft.reason
       next.shots=draft.shots.map((shot,i)=>positions.includes(i)?{...shot,copy:next.shots[i].copy,visual:next.shots[i].visual}:shot)
-      next.factIds=[...new Set([...draft.factIds,...next.factIds])]
+      next.factIds=[...new Set([...draft.factIds.filter(id=>facts.some(fact=>fact.id===id&&verified(fact))),...next.factIds])]
       if(target===focuses[0]||target==='强化痛点')next.pitch=draft.pitch
       if(target==='优化成交引导'&&draft.pitch)next.pitch={...draft.pitch,clickReason:next.pitch?.clickReason||draft.pitch.clickReason}
     }
