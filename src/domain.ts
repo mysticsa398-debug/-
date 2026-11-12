@@ -177,10 +177,14 @@ export function generate(insight:Insight, matches:Match[], facts:Fact[], variant
   return timeShots(shots)
 }
 export const verified = (f:Fact) => f.status==='已核验' && Boolean(f.source.trim() && f.date)
+export const s8miniIonFact:Fact={id:'F-003',claim:'10亿负离子',category:'参数',status:'已核验',
+  source:'工作台用户确认的 Dr.flash S8mini 参数，2026-11-12',date:'2026-11-12',wording:'10亿负离子'}
+
 export const initial = ():DB => {
   const first = {...blankInsight(),id:'IN-001',title:'家庭青年 × 旅行家用',scene:'周末旅行与日常家用',sex:'不限，待验证',age:'待验证',job:'待验证',region:'待验证',interests:'周末旅行、家庭收纳（待验证）',lifestyle:'短途出行与日常共用（待验证）',relations:'夫妻共同决策（待验证）',buyer:'夫妻共同决策',user:'同行家人',influencer:'伴侣',trigger:'整理出游行李',pain:'旅行收纳与家用兼顾',motive:'减少重复购买与出门整理负担',emotion:'出门更从容',barrier:'担心便携与使用体验难以兼顾',alternatives:'酒店吹风机、现有家用吹风机',decision:'同一镜头记录实物尺寸和旅行包收纳过程',source:'内置场景假设；待访谈及实测',counter:'有些旅行者接受酒店吹风机，可能没有携带需求。',audiences:['家庭青年','高频差旅'],strategies:['便携增长','家庭共用'],date:''}
   const second = {...blankInsight(),id:'IN-002',title:'都市白领女性 × 早起通勤',scene:'工作日早起洗发后出门',sex:'女性（场景假设）',age:'待验证',job:'办公室工作（待验证）',trigger:'洗发后离出门时间很近',pain:'早晨吹发时间紧',motive:'用可预期的时间完成出门准备',emotion:'从容进入工作状态',alternatives:'提前洗头、现有吹风机',source:'内置场景假设；待访谈及计时实测',decision:'记录相同测试条件下的实际用时',counter:'晚间洗发人群可能没有早晨吹发需求。',audiences:['都市白领女性'],strategies:['日常效率'],date:''}
-  const facts:Fact[] = ['295g','11万转马达','2亿级负离子','57℃智能恒温','售后、赠品及促销权益'].map((claim,i)=>({id:`F-00${i+1}`,claim,category:i===4?'权益':'参数',status:'待核验',source:'用户提供的待核验参数清单',date:'',wording:''}))
+  const facts:Fact[] = ['295g','11万转马达','10亿负离子','57℃智能恒温','售后、赠品及促销权益'].map((claim,i)=>({id:`F-00${i+1}`,claim,category:i===4?'权益':'参数',status:'待核验',source:'用户提供的待核验参数清单',date:'',wording:''}))
+  facts[2]=s8miniIonFact
   const matches:Match[] = [{id:'M-001',insight:first.id,fact:facts[0].id,scene:first.scene,pain:first.pain,angle:'实物称重与旅行包收纳演示',evidence:'待获取：注明称重口径的连续实拍'}]
   return {products:[defaultProduct],insights:[first,second],facts,matches,scripts:[{id:'SC-001',title:'家庭青年 × 旅行家用',insight:first.id,facts:[],versions:[{id:'V-001',date:'',variant:variants[0],evidence:[],shots:generate(first,matches,facts,variants[0]).map(studioShot)}]}],experiments:[],audits:[],rules:[],designs:[],creativeTests:[],thresholds:{...defaults},endpoint:''}
 }

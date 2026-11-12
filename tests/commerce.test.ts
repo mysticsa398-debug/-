@@ -21,7 +21,7 @@ test('three hooks must use different strategies and three scripts must differ be
 test('verified facts are product scoped and claims without evidence remain blocked',()=>{
   const db=initial()
   const workspace=productWorkspace(db,defaultProduct.id)
-  assert.equal(commerceFacts(workspace,db.insights[0]).length,0)
+  assert.deepEqual(commerceFacts(workspace,db.insights[0]).map(f=>f.wording),['10亿负离子'])
   assert.match(insightContext(db.insights[1]).trigger,/出门/)
   assert.match(insightContext(db.insights[0]).trigger,/行李/)
   const draft={...drafts[0],title:'295g，限时优惠，到手价199元'}

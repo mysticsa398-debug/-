@@ -66,7 +66,7 @@ export function validateBatch(value:unknown,facts:Fact[],motive:Motive){
     const right=new Set(drafts[j].shots.slice(1).map(s=>normalize(s.copy)))
     if(left.filter(s=>right.has(s)).length>=2)throw Error('模型返回的方案正文过于相似，请重新生成。')
   }
-  return drafts
+  return drafts.map(withBottomLeftCta)
 }
 
 export function reviewFrom(value:unknown):Review{
@@ -136,4 +136,11 @@ export function salesCopyIssues(draft:Draft, product:string, category:string){
     ...(!hasProduct||categoryName&&!introduction.includes(categoryName)?['第 2–3 镜口播需要介绍当前产品和品类']:[]),
     ...draft.shots.flatMap((shot,i)=>/(?:同一?|固定|相同)(?:机位|光线|发束|测试条件)|全程同框|计时器|按下计时|记录(?:实际)?用时|同(?:一|样的?)?(?:发长|湿度|距离)|计时对比|记录[^，。！？]{0,16}的时间|结果以.{0,5}为准/.test(shot.copy)?['第 '+(i+1)+' 镜口播念出了拍摄或测试流程']:[])
   ]
+}
+
+export function withBottomLeftCta(draft:Draft):Draft{
+  const last=draft.shots.at(-1)
+  if(!last)return draft
+  const copy=last.copy.replace(/(?:点开|点击|点|打开|戳|进入)(?:下方的?)?(?:商品卡|商品链接|商品页)/g,'点击左下角').replace(/(?:点开|点|戳)左下角/g,'点击左下角')
+  return {...draft,shots:[...draft.shots.slice(0,-1),{...last,copy:copy.includes('点击左下角')?copy:'想了解这款吹风机，点击左下角。'}]}
 }

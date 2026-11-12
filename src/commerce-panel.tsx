@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react'
 import {Sparkles} from 'lucide-react'
-import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,genericOpening,motiveFrom,narratives,reviewFrom,rewritePositions,salesCopyIssues,spokenLength,total,validateBatch,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
+import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,genericOpening,motiveFrom,narratives,reviewFrom,rewritePositions,salesCopyIssues,spokenLength,total,validateBatch,withBottomLeftCta,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
 import type {GenerationSource} from './creative-memory'
 import type {Fact} from './domain'
 import {Field} from './ui'
@@ -63,10 +63,15 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
       if(target==='优化成交引导'&&draft.pitch)next.pitch={...draft.pitch,clickReason:next.pitch?.clickReason||draft.pitch.clickReason}
     }
     if(positions.includes(0)&&spokenLength(next.shots[0].copy)>10)throw Error('改写开头超过前三秒预算，已保留原版本，请重试。')
-    return {next,changes:typeof result?.changes==='string'?result.changes.slice(0,600):target,generation:response.generation}
+    return {next:positions.includes(draft.shots.length-1)?withBottomLeftCta(next):next,changes:typeof result?.changes==='string'?result.changes.slice(0,600):target,generation:response.generation}
   }
   function salesIssues(draft:Draft){
-    return salesCopyIssues(draft,String(context.product||''),String(context.productCategory||''))
+    const issues=salesCopyIssues(draft,String(context.product||''),String(context.productCategory||''))
+    const ion=facts.find(f=>f.claim==='10亿负离子'&&f.status==='已核验'&&f.wording&&f.source&&f.date)
+    if(context.productId==='dr-flash-s8mini'&&ion&&(!draft.factIds.includes(ion.id)||!draft.shots.slice(1,-1).some(s=>/10\s*亿负离子/.test(s.copy)))){
+      issues.push('在中段口播直接介绍已核验的 10 亿负离子，并引用事实条目')
+    }
+    return issues
   }
   async function generate(signal:AbortSignal){
     if(!motive||!reason.trim())return

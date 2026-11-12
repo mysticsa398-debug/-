@@ -4,13 +4,19 @@ import {testMetrics} from './creative-test.ts'
 import {taskSkills} from './script-agent.ts'
 import {studioShot} from './studio-engine.ts'
 import {categories, confidenceLevels, reviewFields, stages} from './research.ts'
-import {initial, blankExperiment, defaults, experimentError, verified, blankInsight, type DB} from './domain.ts'
+import {initial, s8miniIonFact, blankExperiment, defaults, experimentError, verified, blankInsight, type DB} from './domain.ts'
 const key = 's8mini-studio-v1'
 const collections = ['insights','facts','matches','scripts','experiments','audits','rules','designs','creativeTests','products'] as const
 export function save(db:DB) { localStorage.setItem(key,JSON.stringify(db)) }
 export function load():DB {
   const value = localStorage.getItem(key)
-  return value ? validate(JSON.parse(value)) : initial()
+  if(!value)return initial()
+  const db=validate(JSON.parse(value))
+  return {...db,facts:db.facts.map(fact=>fact.id===s8miniIonFact.id
+    &&(!fact.productId||fact.productId===defaultProduct.id)
+    &&fact.claim==='2亿级负离子'&&fact.status==='待核验'
+    &&fact.source==='用户提供的待核验参数清单'&&!fact.date&&!fact.wording
+      ?{...s8miniIonFact,...(fact.productId?{productId:fact.productId}:{})}:fact)}
 }
 function validate(value:unknown):DB {
   const seed = initial()
