@@ -42,3 +42,11 @@ test('30-second six-shot commerce layout follows the supplied editorial timing',
   const draft={...drafts[0],shots:[...drafts[0].shots,{task:'商品卡',visual:'商品卡入画',copy:'点商品卡看尺寸'}]}
   assert.deepEqual(commerceShots(draft,30).map(s=>s.time),['0–3 秒','3–8 秒','8–14 秒','14–21 秒','21–26 秒','26–30 秒'])
 })
+
+test('sales copy flags generic hooks, missing product introductions and production directions in narration',async()=>{
+  const {salesCopyIssues}=await import('../src/commerce-engine.ts')
+  const draft={...drafts[0],shots:drafts[0].shots.map((shot,i)=>i===0?{...shot,copy:'又来不及了'}:i===2?{...shot,copy:'同一机位，记录实际用时'}:shot)}
+  assert.equal(salesCopyIssues(draft,'Dr.flash S8mini 吹风机','高速吹风机').length,3)
+  const revised={...draft,shots:draft.shots.map((shot,i)=>({...shot,copy:['湿发还得赶地铁？','看这台 S8mini 吹风机','出门前先吹发根'][i]||shot.copy}))}
+  assert.deepEqual(salesCopyIssues(revised,'Dr.flash S8mini 吹风机','高速吹风机'),[])
+})

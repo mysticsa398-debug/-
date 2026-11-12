@@ -142,7 +142,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
         </details>}
       </div>
       {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'} provider={provider}
-        context={{product:product.name,productId:product.id,productCategory:product.category,productDemo:product.demo,
+        context={{product:product.name,productId:product.id,productCategory:product.category,
           insight:insightContext(insight),structure:strategyContext(structure),memory:useMemory?memory:[],facts:commercialFacts,materialReference}}
         restored={commerceScript&&restored?.length?{id:commerceScript.id,editions:restored}:undefined} facts={workspace.facts} save={saveCommerce} open={openCommerce}/>}
       {status!=='ready'&&<p className="muted" role="status">{{loading:'正在检查模型连接。',setup:'站点 AI 等待管理员配置。','sign-in':'登录后即可生成。',forbidden:'此账号尚未开通生成权限。',offline:'暂未连到站点 AI 服务。'}[status]} {status==='sign-in'&&<a href={'/signin-with-chatgpt?return_to='+encodeURIComponent(location.pathname+location.hash)}>使用 ChatGPT 登录</a>}</p>}

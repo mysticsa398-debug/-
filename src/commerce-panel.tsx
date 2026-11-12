@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react'
 import {Sparkles} from 'lucide-react'
-import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,motiveFrom,narratives,reviewFrom,rewritePositions,spokenLength,total,validateBatch,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
+import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,genericOpening,motiveFrom,narratives,reviewFrom,rewritePositions,salesCopyIssues,spokenLength,total,validateBatch,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
 import type {GenerationSource} from './creative-memory'
 import type {Fact} from './domain'
 import {Field} from './ui'
@@ -48,7 +48,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
   async function rewrite(current:Edition,target:string,signal:AbortSignal){
     const {draft,meta}=current
     const positions=rewritePositions(target,draft.shots.length)
-    const response=await request('rewrite',{draft,motive:meta.motive,review:meta.review,risks:meta.risks,focus:target,
+    const response=await request('rewrite',{draft,motive:meta.motive,review:meta.review,risks:meta.risks,copyIssues:salesIssues(draft),focus:target,
       budgets:budgets(meta.duration,draft.shots.length),editableShots:positions.map(i=>i+1)},signal)
     const result=response.result as {draft:unknown;changes?:string}|null
     const next=draftFrom(result?.draft,facts)
@@ -63,11 +63,22 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     if(positions.includes(0)&&spokenLength(next.shots[0].copy)>10)throw Error('改写开头超过前三秒预算，已保留原版本，请重试。')
     return {next,changes:typeof result?.changes==='string'?result.changes.slice(0,600):target,generation:response.generation}
   }
+  function salesIssues(draft:Draft){
+    return salesCopyIssues(draft,String(context.product||''),String(context.productCategory||''))
+  }
   async function generate(signal:AbortSignal){
     if(!motive||!reason.trim())return
     const analysis={...motive,reason:reason.trim()}
-    const {result,generation}=await request('commerce',{motive:analysis,hooks:analysis.hooks},signal)
-    const drafts=validateBatch(result,facts,analysis)
+    const input={motive:analysis,hooks:analysis.hooks}
+    let response=await request('commerce',input,signal)
+    let drafts=validateBatch(response.result,facts,analysis)
+    const feedback=drafts.map((draft,index)=>({candidate:index+1,issues:salesIssues(draft)}))
+    if(feedback.some(item=>item.issues.length)){
+      setProgress('补写人群痛点和产品介绍…')
+      response=await request('commerce',{...input,feedback},signal)
+      drafts=validateBatch(response.result,facts,analysis)
+    }
+    const {generation}=response
     if(drafts.some(d=>d.shots.length!==6||!d.pitch))throw Error('模型未返回六镜及卖点举证信息，请重试。')
     setProgress('评审三条稿件，按需修订…')
     const initial=drafts.map((draft,i)=>{
@@ -83,7 +94,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
         let review=await assess(draft,analysis,signal)
         editions.push(edition(draft,analysis,i,review,'初稿评审'))
         savedFrom=1
-        for(let round=0;round<2&&(total(review)<80||editions.at(-1)!.meta.risks.some(r=>r.includes('口播超时')));round++){
+        for(let round=0;round<2&&(total(review)<80||salesIssues(editions.at(-1)!.draft).length>0||editions.at(-1)!.meta.risks.some(r=>r.includes('口播超时')));round++){
           const {next,changes}=await rewrite(editions.at(-1)!,'优先修正评分弱项和超时文案',signal)
           const carried=editions.at(-1)!.meta.risks.filter(r=>!r.includes('口播超时'))
           editions.push(edition(next,analysis,i,undefined,changes,carried))
@@ -118,8 +129,10 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     </fieldset>
     <div className="inline-buttons">
       <button className="button primary" disabled={!ready||!!progress} onClick={()=>void task('分析购买动机并生成钩子…',async signal=>{
-        const {result}=await request('motive',{},signal)
-        const analysis=motiveFrom(result)
+        let analysis=motiveFrom((await request('motive',{},signal)).result)
+        if(analysis.hooks.some(h=>genericOpening(h.copy))){
+          analysis=motiveFrom((await request('motive',{feedback:'上次开头太空泛。每条开头点出具体场景物件、需求或冲突。'},signal)).result)
+        }
         setMotive(analysis);setReason(analysis.reason);setCandidates([])
       })}><Sparkles size={16}/> {provider||'AI'} 分析动机与钩子</button>
       <button className="button primary" disabled={!ready||!motive||!reason.trim()||!!progress} onClick={()=>void task('生成三条完整带货稿…',generate)}>生成 3 条完整脚本</button>
@@ -152,7 +165,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
           <p>{meta.review?total(meta.review)+' / 100 · 创作诊断':'待评审'}{meta.risks.length?' · 需人工复核':!draft.factIds.length?' · 内部试拍稿':' · 发布前请复核'}</p>
           {candidate.issue&&<p role="status">{candidate.issue}</p>}
           {meta.review&&<details><summary>评分与修改原因</summary><ul>{meta.review.scores.map((s,j)=><li key={j}>{dimensions[j][0]} {s.score}/{dimensions[j][1]} · {s.reason}</li>)}</ul><p>{meta.review.changes}</p></details>}
-          {copyDiagnostics(draft).map(issue=><p className="muted" key={issue}>{issue}</p>)}
+          {[...copyDiagnostics(draft),...salesIssues(draft)].map(issue=><p className="muted" key={issue}>{issue}</p>)}
           {!!meta.risks.length&&<details><summary>宣传合规与时长提示</summary><ul>{meta.risks.map(r=><li key={r}>{r}</li>)}</ul></details>}
           {candidate.editions.length>1&&<details><summary>比较版本</summary>{candidate.editions.map(({draft,meta},j)=><div key={j}><p><strong>第 {j+1} 版 · {meta.changes}</strong></p><p>{draft.shots.map(s=>s.copy).join(' ')}</p></div>)}</details>}
           <div className="inline-buttons"><button className="button" disabled={!!progress||!candidate.id} onClick={()=>open(candidate.id!)}>编辑与版本</button><button className="button" disabled={!!progress||!ready} onClick={()=>improve(i)}>局部重写</button></div>
