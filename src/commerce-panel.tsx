@@ -74,13 +74,23 @@ export function CommercePanel({ready,context,facts,save,open,restored}:{ready:bo
     }
     setProgress('正在写脚本…')
     const input={motive:analysis,hooks:analysis.hooks}
-    let response=await request('commerce',input,signal)
-    let draft=singleDraftFrom(response.result,facts,analysis)
-    const issues=salesIssues(draft)
-    if(issues.length){
-      response=await request('commerce',{...input,feedback:issues},signal)
+    let response:Awaited<ReturnType<typeof request>>|undefined
+    let draft:Draft|undefined
+    let feedback:string[]=[]
+    try{
+      response=await request('commerce',input,signal)
+      draft=singleDraftFrom(response.result,facts,analysis)
+      feedback=salesIssues(draft)
+    }catch(error){
+      if(signal.aborted)throw error
+      feedback=[error instanceof Error?error.message:'分镜格式无效。']
+    }
+    if(feedback.length){
+      setProgress('正在校正脚本…')
+      response=await request('commerce',{...input,feedback},signal)
       draft=singleDraftFrom(response.result,facts,analysis)
     }
+    if(!response||!draft)throw Error('模型未返回可用脚本，请重试。')
     const {generation}=response
     const first=edition(draft,analysis,0)
     const id=save([first],generation)
