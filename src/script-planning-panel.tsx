@@ -50,9 +50,9 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
   },[])
   const restored=commerceScript?.versions.slice().reverse().flatMap((version):Edition[]=>{
     const meta=version.planning?.commerce
-    if(!meta||version.shots.length!==5)return []
+    if(!meta||![5,6].includes(version.shots.length))return []
     const shots=version.shots.map(shot=>({task:shot.part,visual:'content' in shot?shot.content:shot.visual,copy:videoCopy(studioShot(shot))}))
-    return [{meta,draft:{title:version.title||commerceScript.title,reason:meta.motive.reason,shots,
+    return [{meta,draft:{title:version.title||commerceScript.title,reason:meta.motive.reason,shots,pitch:meta.pitch,
       factIds:version.evidence.filter(f=>commercialFacts.some(approved=>approved.id===f.id)).map(f=>f.id)}}]
   })
   const locked=Boolean(pending)

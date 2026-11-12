@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react'
 import {Sparkles} from 'lucide-react'
-import {budgets,commerceRisks,commerceShots,draftFrom,dimensions,motiveFrom,narratives,reviewFrom,total,validateBatch,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
+import {budgets,commerceRisks,commerceShots,copyDiagnostics,draftFrom,dimensions,motiveFrom,narratives,reviewFrom,rewritePositions,spokenLength,total,validateBatch,type Draft,type Duration,type Edition,type Motive,type Review} from './commerce-engine'
 import type {GenerationSource} from './creative-memory'
 import type {Fact} from './domain'
 import {Field} from './ui'
@@ -21,7 +21,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
   const [error,setError]=useState('')
   const active=useRef<AbortController|undefined>(undefined)
   useEffect(()=>()=>active.current?.abort(),[])
-  const base={...context,duration,videoType,narrative:narratives.find(n=>n.id===narrative),budgets:budgets(duration)}
+  const base={...context,duration,videoType,narrative:narratives.find(n=>n.id===narrative),budgets:budgets(duration,6)}
   async function request(step:string,input:object,signal:AbortSignal){
     const response=await fetch('/api/gpt-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step,context:{...base,...input}}),signal:AbortSignal.any([signal,AbortSignal.timeout(48000)])})
     const data=await response.json().catch(()=>null)
@@ -40,21 +40,27 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     setMotive(undefined);setCandidates([]);setReason('')
   }
   function edition(draft:Draft,analysis:Motive,index:number,review?:Review,changes='初稿',previousRisks:string[]=[]):Edition{
-    return {draft,meta:{duration,motive:analysis,hook:{...analysis.hooks[index],copy:draft.shots[0].copy},review,changes,risks:[...new Set([...previousRisks,...commerceRisks(draft,facts,duration),...(review?.risks||[])])]}}
+    return {draft,meta:{duration,motive:analysis,hook:{...analysis.hooks[index],copy:draft.shots[0].copy},review,changes,pitch:draft.pitch,risks:[...new Set([...previousRisks,...commerceRisks(draft,facts,duration),...(review?.risks||[])])]}}
   }
   async function assess(draft:Draft,analysis:Motive,signal:AbortSignal){
     return reviewFrom((await request('review',{draft,motive:analysis},signal)).result)
   }
   async function rewrite(current:Edition,target:string,signal:AbortSignal){
     const {draft,meta}=current
-    const response=await request('rewrite',{draft,motive:meta.motive,review:meta.review,risks:meta.risks,focus:target},signal)
+    const positions=rewritePositions(target,draft.shots.length)
+    const response=await request('rewrite',{draft,motive:meta.motive,review:meta.review,risks:meta.risks,focus:target,
+      budgets:budgets(meta.duration,draft.shots.length),editableShots:positions.map(i=>i+1)},signal)
     const result=response.result as {draft:unknown;changes?:string}|null
     const next=draftFrom(result?.draft,facts)
-    if(target===focuses[0]){
+    if(next.shots.length!==draft.shots.length)throw Error('改写后的镜头数量不一致，请重试。')
+    if(positions.length<draft.shots.length){
       next.title=draft.title;next.reason=draft.reason
-      next.shots=[{...draft.shots[0],copy:next.shots[0].copy,visual:next.shots[0].visual},...draft.shots.slice(1)]
+      next.shots=draft.shots.map((shot,i)=>positions.includes(i)?{...shot,copy:next.shots[i].copy,visual:next.shots[i].visual}:shot)
       next.factIds=[...new Set([...draft.factIds,...next.factIds])]
+      if(target===focuses[0]||target==='强化痛点')next.pitch=draft.pitch
+      if(target==='优化成交引导'&&draft.pitch)next.pitch={...draft.pitch,clickReason:next.pitch?.clickReason||draft.pitch.clickReason}
     }
+    if(positions.includes(0)&&spokenLength(next.shots[0].copy)>10)throw Error('改写开头超过前三秒预算，已保留原版本，请重试。')
     return {next,changes:typeof result?.changes==='string'?result.changes.slice(0,600):target,generation:response.generation}
   }
   async function generate(signal:AbortSignal){
@@ -62,6 +68,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     const analysis={...motive,reason:reason.trim()}
     const {result,generation}=await request('commerce',{motive:analysis,hooks:analysis.hooks},signal)
     const drafts=validateBatch(result,facts,analysis)
+    if(drafts.some(d=>d.shots.length!==6||!d.pitch))throw Error('模型未返回六镜及卖点举证信息，请重试。')
     setProgress('评审三条稿件，按需修订…')
     const initial=drafts.map((draft,i)=>{
       const first=edition(draft,analysis,i)
@@ -136,12 +143,17 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
         const {draft,meta}=candidate.editions.at(-1)!
         return <article key={i}><h4>{meta.hook.strategy} · {draft.title}</h4>
           <p>{meta.motive.reason}</p>
+          {draft.pitch&&<details><summary>购买利益与举证</summary>
+            <p>产品事实 · {facts.find(f=>f.id===draft.pitch?.factId)?.wording||'使用实拍观察'}</p>
+            <p>用户利益 · {draft.pitch.benefit}</p><p>场景证明 · {draft.pitch.proof}</p><p>点击理由 · {draft.pitch.clickReason}</p>
+          </details>}
           <ol>{draft.shots.map((shot,j)=><li key={j}>{shot.copy}</li>)}</ol>
           <details><summary>查看完整分镜</summary><div className="table-wrap"><table><thead><tr>{['时间段','结构任务','拍摄参考','视频文案'].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{commerceShots(draft,meta.duration).map((s,i)=><tr key={i}><td>{s.time}</td><td>{s.part}</td><td>{s.content}</td><td>{s.subtitle}</td></tr>)}</tbody></table></div></details>
           <p>{meta.review?total(meta.review)+' / 100 · 创作诊断':'待评审'}{meta.risks.length?' · 需人工复核':!draft.factIds.length?' · 内部试拍稿':' · 发布前请复核'}</p>
           {candidate.issue&&<p role="status">{candidate.issue}</p>}
           {meta.review&&<details><summary>评分与修改原因</summary><ul>{meta.review.scores.map((s,j)=><li key={j}>{dimensions[j][0]} {s.score}/{dimensions[j][1]} · {s.reason}</li>)}</ul><p>{meta.review.changes}</p></details>}
-          {!!meta.risks.length&&<details><summary>风险提示</summary><ul>{meta.risks.map(r=><li key={r}>{r}</li>)}</ul></details>}
+          {copyDiagnostics(draft).map(issue=><p className="muted" key={issue}>{issue}</p>)}
+          {!!meta.risks.length&&<details><summary>宣传合规与时长提示</summary><ul>{meta.risks.map(r=><li key={r}>{r}</li>)}</ul></details>}
           {candidate.editions.length>1&&<details><summary>比较版本</summary>{candidate.editions.map(({draft,meta},j)=><div key={j}><p><strong>第 {j+1} 版 · {meta.changes}</strong></p><p>{draft.shots.map(s=>s.copy).join(' ')}</p></div>)}</details>}
           <div className="inline-buttons"><button className="button" disabled={!!progress||!candidate.id} onClick={()=>open(candidate.id!)}>编辑与版本</button><button className="button" disabled={!!progress||!ready} onClick={()=>improve(i)}>局部重写</button></div>
         </article>

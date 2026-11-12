@@ -14,19 +14,21 @@ export type Duration = 15|30|45
 export type Hook = Record<'strategy'|'audience'|'psychology'|'retention'|'visual'|'bridge'|'copy',string>
 export type Motive = Record<'buyer'|'trigger'|'alternative'|'dissatisfaction'|'benefit'|'concern'|'proof'|'reason'|'basis',string> & {hooks:Hook[]}
 export type CommerceShot = {task:string; visual:string; copy:string}
-export type Draft = {title:string; reason:string; shots:CommerceShot[]; factIds:string[]}
+export type Pitch = {factId:string; benefit:string; proof:string; clickReason:string}
+export type Draft = {title:string; reason:string; shots:CommerceShot[]; factIds:string[]; pitch?:Pitch}
 export type Review = {scores:{score:number;reason:string}[]; risks:string[]; changes:string}
-export type CommerceMeta = {hook:Hook; motive:Motive; duration:Duration; review?:Review; changes:string; risks:string[]}
+export type CommerceMeta = {hook:Hook; motive:Motive; duration:Duration; review?:Review; changes:string; risks:string[]; pitch?:Pitch}
 export type Edition = {draft:Draft; meta:CommerceMeta}
 
 const text = (v:unknown):v is string => typeof v==='string'&&v.trim().length>0&&v.length<=600
 const object = (v:unknown):v is Record<string,unknown> => !!v&&typeof v==='object'&&!Array.isArray(v)
 const hasText = (v:Record<string,unknown>,keys:string[]) => keys.every(k=>text(v[k]))
 export const spokenLength = (copy:string) => Array.from(copy.replace(/[\p{P}\s]/gu,'')).reduce((n,c)=>n+(/[0-9a-z]/i.test(c)?1.5:1),0)
-export function shotSeconds(duration:Duration){
+export function shotSeconds(duration:Duration,count=5){
+  if(count===6)return duration===15?[3,2,2,3,3,2]:duration===30?[3,5,6,7,5,4]:[3,7,9,11,9,6]
   return duration===15?[3,3,3,3,3]:duration===30?[3,6,8,7,6]:[3,9,13,11,9]
 }
-export const budgets = (duration:Duration) => shotSeconds(duration).map(s=>Math.floor((s-.5)*4))
+export const budgets = (duration:Duration,count=5) => shotSeconds(duration,count).map(s=>Math.floor((s-.5)*4))
 
 export function motiveFrom(value:unknown):Motive{
   if(!object(value)||!hasText(value,['buyer','trigger','alternative','dissatisfaction','benefit','concern','proof','reason','basis'])||
@@ -44,9 +46,10 @@ export function commerceFacts(db:DB,insight:Insight){
 }
 
 export function draftFrom(value:unknown,facts:Fact[]):Draft{
-  if(!object(value)||!hasText(value,['title','reason'])||!Array.isArray(value.shots)||value.shots.length!==5||
+  if(!object(value)||!hasText(value,['title','reason'])||!Array.isArray(value.shots)||![5,6].includes(value.shots.length)||
     !value.shots.every(s=>object(s)&&hasText(s,['task','visual','copy']))||!Array.isArray(value.factIds)||
     !value.factIds.every(id=>facts.some(f=>f.id===id&&verified(f)&&f.wording.trim())))throw Error('模型分镜或事实引用格式不符，请重试。')
+  if(value.pitch!==undefined&&(!object(value.pitch)||typeof value.pitch.factId!=='string'||!hasText(value.pitch,['benefit','proof','clickReason'])||(value.pitch.factId&&!value.factIds.includes(value.pitch.factId))))throw Error('卖点举证结构无效。')
   return value as Draft
 }
 
@@ -81,14 +84,14 @@ export function commerceRisks(draft:Draft,facts:Fact[],duration:Duration){
     ...audit(text,facts.map(f=>allowed.includes(f)?f:{...f,status:'待核验'})).map(f=>f.term+' · '+f.reason),
     ...Array.from(text.matchAll(/(?:[¥￥]\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?\s*元|限时优惠|免费试用|到手价|下单送|全网销量|(?:实测|测试结果)[^，。\n]{0,12}\d)/g),m=>m[0])
       .filter(term=>!allowed.some(f=>f.wording.includes(term))).map(term=>term+' · 需人工核对'),
-    ...draft.shots.flatMap((s,i)=>spokenLength(s.copy)>budgets(duration)[i]?['第 '+(i+1)+' 镜口播超时']:[])
+    ...draft.shots.flatMap((s,i)=>spokenLength(s.copy)>budgets(duration,draft.shots.length)[i]?['第 '+(i+1)+' 镜口播超时']:[])
   ])]
 }
 
 export function commerceShots(draft:Draft,duration:Duration):StudioShot[]{
   let start=0
   return draft.shots.map((s,i)=>{
-    const end=start+shotSeconds(duration)[i]
+    const end=start+shotSeconds(duration,draft.shots.length)[i]
     const shot={time:`${start}–${end} 秒`,part:s.task,content:s.visual,subtitle:s.copy}
     start=end
     return shot
@@ -101,4 +104,21 @@ export function validCommerceMeta(value:unknown):value is CommerceMeta{
     !hasText(value.hook,['strategy','audience','psychology','retention','visual','bridge','copy']))return false
   try{motiveFrom(value.motive);if(value.review!==undefined)reviewFrom(value.review);return true}
   catch{return false}
+}
+
+export function rewritePositions(focus:string,count:number){
+  if(focus==='只优化前三秒')return [0]
+  if(focus==='优化成交引导')return [count-1]
+  if(focus==='增加有证据的卖点'||focus==='强化购买理由')return [1,2,3]
+  if(focus==='强化痛点')return [0,1]
+  return Array.from({length:count},(_,i)=>i)
+}
+
+export function copyDiagnostics(draft:Draft){
+  const last=draft.shots.at(-1)?.copy||''
+  return [
+    ...(/(?:点|打开|戳|进入|看看).{0,8}(?:商品卡|商品链接|左下角)/.test(last)?[]:['结尾缺少明确的商品卡动作']),
+    ...(draft.factIds.length>2?['事实引用较多，检查是否围绕同一个购买理由']:[]),
+    ...(draft.shots.slice(1,-1).filter(s=>/^(?:先|再|把|拿出|放进|插上|吹完)/.test(s.copy)).length>=3?['正文多段以动作开头，检查购买理由是否清楚']:[])
+  ]
 }

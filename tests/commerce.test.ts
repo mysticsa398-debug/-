@@ -37,3 +37,8 @@ test('five shots fit the requested timeline and review scores respect dimension 
   assert.equal(total(reviewFrom(review)),100)
   assert.throws(()=>reviewFrom({...review,scores:[{score:21,reason:'超出上限'},...review.scores.slice(1)]}))
 })
+
+test('30-second six-shot commerce layout follows the supplied editorial timing',()=>{
+  const draft={...drafts[0],shots:[...drafts[0].shots,{task:'商品卡',visual:'商品卡入画',copy:'点商品卡看尺寸'}]}
+  assert.deepEqual(commerceShots(draft,30).map(s=>s.time),['0–3 秒','3–8 秒','8–14 秒','14–21 秒','21–26 秒','26–30 秒'])
+})
