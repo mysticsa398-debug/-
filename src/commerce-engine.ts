@@ -14,7 +14,7 @@ export type Duration = 15|30|45
 export type Hook = Record<'strategy'|'audience'|'psychology'|'retention'|'visual'|'bridge'|'copy',string>
 export type Motive = Record<'buyer'|'trigger'|'alternative'|'dissatisfaction'|'benefit'|'concern'|'proof'|'reason'|'basis',string> & {hooks:Hook[]}
 export type CommerceShot = {task:string; visual:string; copy:string}
-export type Pitch = {factId:string; benefit:string; proof:string; clickReason:string}
+export type Pitch = {factId:string; benefit:string; proof:string; clickReason:string; originalIdea?:string; editorialReason?:string; testPlan?:string}
 export type Draft = {title:string; reason:string; shots:CommerceShot[]; factIds:string[]; pitch?:Pitch}
 export type Review = {scores:{score:number;reason:string}[]; risks:string[]; changes:string}
 export type CommerceMeta = {hook:Hook; motive:Motive; duration:Duration; review?:Review; changes:string; risks:string[]; pitch?:Pitch}
@@ -49,7 +49,7 @@ export function draftFrom(value:unknown,facts:Fact[]):Draft{
   if(!object(value)||!hasText(value,['title','reason'])||!Array.isArray(value.shots)||![5,6].includes(value.shots.length)||
     !value.shots.every(s=>object(s)&&hasText(s,['task','visual','copy']))||!Array.isArray(value.factIds)||
     !value.factIds.every(id=>facts.some(f=>f.id===id&&verified(f)&&f.wording.trim())))throw Error('模型分镜或事实引用格式不符，请重试。')
-  if(value.pitch!==undefined&&(!object(value.pitch)||typeof value.pitch.factId!=='string'||!hasText(value.pitch,['benefit','proof','clickReason'])||(value.pitch.factId&&!value.factIds.includes(value.pitch.factId))))throw Error('卖点举证结构无效。')
+  if(value.pitch!==undefined&&(!object(value.pitch)||typeof value.pitch.factId!=='string'||!hasText(value.pitch,['benefit','proof','clickReason'])||['originalIdea','editorialReason','testPlan'].some(k=>value.pitch&&object(value.pitch)&&value.pitch[k]!==undefined&&!text(value.pitch[k]))||(value.pitch.factId&&!value.factIds.includes(value.pitch.factId))))throw Error('卖点举证结构无效。')
   return value as Draft
 }
 

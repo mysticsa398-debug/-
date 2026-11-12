@@ -14,6 +14,8 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
   const [narrative,setNarrative]=useState('scene')
   const [videoType,setVideoType]=useState('实物演示')
   const [motive,setMotive]=useState<Motive>()
+  const [originalScript,setOriginalScript]=useState('')
+  const [sourceMode,setSourceMode]=useState(false)
   const [reason,setReason]=useState('')
   const [candidates,setCandidates]=useState<Candidate[]>(restored?[restored]:[])
   const [focus,setFocus]=useState(focuses[0])
@@ -21,7 +23,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
   const [error,setError]=useState('')
   const active=useRef<AbortController|undefined>(undefined)
   useEffect(()=>()=>active.current?.abort(),[])
-  const base={...context,duration,videoType,narrative:narratives.find(n=>n.id===narrative),budgets:budgets(duration,6)}
+  const base={...context,...(originalScript.trim()?{originalScript:originalScript.trim()}:{}),duration,videoType,narrative:narratives.find(n=>n.id===narrative),budgets:budgets(duration,6)}
   async function request(step:string,input:object,signal:AbortSignal){
     const response=await fetch('/api/gpt-script',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({step,context:{...base,...input}}),signal:AbortSignal.any([signal,AbortSignal.timeout(48000)])})
     const data=await response.json().catch(()=>null)
@@ -79,6 +81,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
       drafts=validateBatch(response.result,facts,analysis)
     }
     const {generation}=response
+    setSourceMode(Boolean(originalScript.trim()))
     if(drafts.some(d=>d.shots.length!==6||!d.pitch))throw Error('模型未返回六镜及卖点举证信息，请重试。')
     setProgress('评审三条稿件，按需修订…')
     const initial=drafts.map((draft,i)=>{
@@ -122,6 +125,12 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     })
   }
   return <section className="commerce-panel" aria-label="带货文案引擎">
+    <details className="source-note">
+      <summary>粘贴原稿继续优化</summary>
+      <label className="field"><span>原始带货口播（选填）</span>
+        <textarea rows={4} maxLength={4000} disabled={!!progress} value={originalScript} onChange={event=>{setOriginalScript(event.target.value);reset()}}/>
+      </label>
+    </details>
     <fieldset className="commerce-settings" disabled={!!progress}>
       <Field label="目标时长" value={String(duration)} options={[15,30,45].map(d=>({value:String(d),label:d+' 秒'}))} change={v=>{setDuration(Number(v) as Duration);reset()}}/>
       <Field label="视频类型" value={videoType} options={['实物演示','场景口播','选购测评'].map(v=>({value:v,label:v}))} change={v=>{setVideoType(v);reset()}}/>
@@ -154,13 +163,23 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
       <Field label="局部重写方向" value={focus} options={focuses.map(v=>({value:v,label:v}))} change={setFocus}/>
       <div className="commerce-options">{candidates.map((candidate,i)=>{
         const {draft,meta}=candidate.editions.at(-1)!
-        return <article key={i}><h4>{meta.hook.strategy} · {draft.title}</h4>
+        const fullCopy=draft.shots.map(shot=>shot.copy.trim()).join('\n')
+        return <article key={i}><h4>{sourceMode?['原意优化版','快节奏成交版','开头测试版'][i]+' · ':''}{draft.title}</h4>
+          <div className="commerce-readout">
+            <strong>完整带货口播</strong>
+            <p>{fullCopy}</p>
+          </div>
           <p>{meta.motive.reason}</p>
           {draft.pitch&&<details><summary>购买利益与举证</summary>
             <p>产品事实 · {facts.find(f=>f.id===draft.pitch?.factId)?.wording||'使用实拍观察'}</p>
             <p>用户利益 · {draft.pitch.benefit}</p><p>场景证明 · {draft.pitch.proof}</p><p>点击理由 · {draft.pitch.clickReason}</p>
           </details>}
-          <ol>{draft.shots.map((shot,j)=><li key={j}>{shot.copy}</li>)}</ol>
+
+          {draft.pitch?.editorialReason&&<details><summary>为什么这样写</summary>
+            {draft.pitch.originalIdea&&<p>创意 · {draft.pitch.originalIdea}</p>}
+            <p>{draft.pitch.editorialReason}</p>
+          </details>}
+          {draft.pitch?.testPlan&&<details><summary>测试与复盘</summary><p>{draft.pitch.testPlan}</p></details>}
           <details><summary>查看完整分镜</summary><div className="table-wrap"><table><thead><tr>{['时间段','结构任务','拍摄参考','视频文案'].map(label=><th key={label}>{label}</th>)}</tr></thead><tbody>{commerceShots(draft,meta.duration).map((s,i)=><tr key={i}><td>{s.time}</td><td>{s.part}</td><td>{s.content}</td><td>{s.subtitle}</td></tr>)}</tbody></table></div></details>
           <p>{meta.review?total(meta.review)+' / 100 · 创作诊断':'待评审'}{meta.risks.length?' · 需人工复核':!draft.factIds.length?' · 内部试拍稿':' · 发布前请复核'}</p>
           {candidate.issue&&<p role="status">{candidate.issue}</p>}

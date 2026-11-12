@@ -448,3 +448,6 @@ textarea.narration:focus,
 .commerce-options ol,.commerce-options ul {padding-inline-start:20px}
 .commerce-panel dd {margin:0 0 6px}
 @media(max-width:800px){.commerce-options,.commerce-settings {grid-template-columns:minmax(0,1fr)}}
+
+.commerce-readout {margin:8px 0 12px;padding:12px;background:#f6f8fb;border-radius:10px}
+.commerce-readout p {white-space:pre-line;line-height:1.65;margin-top:6px}
