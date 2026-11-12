@@ -18,6 +18,8 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
   const [sourceMode,setSourceMode]=useState(false)
   const [reason,setReason]=useState('')
   const [candidates,setCandidates]=useState<Candidate[]>(restored?[restored]:[])
+  const [candidateIndex,setCandidateIndex]=useState(0)
+  const [comparing,setComparing]=useState(false)
   const [focus,setFocus]=useState(focuses[0])
   const [progress,setProgress]=useState('')
   const [error,setError]=useState('')
@@ -39,7 +41,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     finally{active.current=undefined;setProgress('')}
   }
   function reset(){
-    setMotive(undefined);setCandidates([]);setReason('')
+    setMotive(undefined);setCandidates([]);setReason('');setCandidateIndex(0);setComparing(false)
   }
   function edition(draft:Draft,analysis:Motive,index:number,review?:Review,changes='初稿',previousRisks:string[]=[]):Edition{
     return {draft,meta:{duration,motive:analysis,hook:{...analysis.hooks[index],copy:draft.shots[0].copy},review,changes,pitch:draft.pitch,risks:[...new Set([...previousRisks,...commerceRisks(draft,facts,duration),...(review?.risks||[])])]}}
@@ -93,7 +95,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
       const first=edition(draft,analysis,i)
       return {editions:[first],id:save([first],generation)}
     })
-    setCandidates(initial)
+    setCandidateIndex(0);setComparing(false);setCandidates(initial)
     const completed=await Promise.all(initial.map(async (candidate,i):Promise<Candidate>=>{
       const editions=[...candidate.editions]
       let savedFrom=0
@@ -130,7 +132,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
     })
   }
   return <section className="commerce-panel" aria-label="带货文案引擎">
-    <details className="source-note">
+    <details className="source-note commerce-config">
       <summary>粘贴原稿继续优化</summary>
       <label className="field"><span>原始带货口播（选填）</span>
         <textarea rows={4} maxLength={4000} disabled={!!progress} value={originalScript} onChange={event=>{setOriginalScript(event.target.value);reset()}}/>
@@ -142,31 +144,40 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
       <Field label="叙事结构" value={narrative} options={narratives.map(n=>({value:n.id,label:n.label}))} change={v=>{setNarrative(v);reset()}}/>
     </fieldset>
     <div className="inline-buttons">
-      <button className="button primary" disabled={!ready||!!progress} onClick={()=>void task('分析购买动机并生成钩子…',async signal=>{
+      <button className={motive?'button':'button primary'} disabled={!ready||!!progress} onClick={()=>void task('分析购买动机并生成钩子…',async signal=>{
         let analysis=motiveFrom((await request('motive',{},signal)).result)
         if(analysis.hooks.some(h=>genericOpening(h.copy))){
           analysis=motiveFrom((await request('motive',{feedback:'上次开头太空泛。每条开头点出具体场景物件、需求或冲突。'},signal)).result)
         }
         setMotive(analysis);setReason(analysis.reason);setCandidates([])
       })}><Sparkles size={16}/> {provider||'AI'} 分析动机与钩子</button>
-      <button className="button primary" disabled={!ready||!motive||!reason.trim()||!!progress} onClick={()=>void task('生成三条完整带货稿…',generate)}>生成 3 条完整脚本</button>
+      {motive&&<button className="button primary" disabled={!ready||!reason.trim()||!!progress} onClick={()=>void task('生成三条完整带货稿…',generate)}>生成 3 条完整脚本</button>}
     </div>
     {progress&&<button className="text-button" onClick={()=>active.current?.abort()}>停止后续生成</button>}
-    <p role="status" className="muted">{progress||'生成方案和改写轮次会保存到脚本库。'}</p>
+    {progress&&<p role="status" className="muted">{progress}</p>}
     {error&&<p className="notice" role="alert">{error}</p>}
     {motive&&<>
       <Field label="核心购买理由" value={reason} change={setReason}/>
       <details className="source-note"><summary>购买动机与证据依据</summary>
         <dl>{([['buyer','购买者'],['trigger','需求触发'],['alternative','现有方式'],['dissatisfaction','不满意的原因'],['benefit','期待利益'],['concern','购买顾虑'],['proof','可拍证据'],['basis','事实与假设']] as const).map(([key,label])=><div key={key}><dt>{label}</dt><dd>{motive[key]}</dd></div>)}</dl>
       </details>
-      <div className="commerce-options">{motive.hooks.map(h=><article key={h.strategy}>
+      <details className="source-note" open={candidates.length===0}><summary>前三秒钩子 · {motive.hooks.length} 个</summary><div className="commerce-options commerce-hooks">{motive.hooks.map(h=><article key={h.strategy}>
         <h4>{h.strategy} · 0–3 秒</h4><strong>{h.copy}</strong>
         <p>{h.audience} · {h.psychology}</p><p>{h.retention}</p><p>拍摄 · {h.visual}</p><p>承接 · {h.bridge}</p>
-      </article>)}</div>
+      </article>)}</div></details>
     </>}
     {!!candidates.length&&<>
-      <Field label="局部重写方向" value={focus} options={focuses.map(v=>({value:v,label:v}))} change={setFocus}/>
-      <div className="commerce-options">{candidates.map((candidate,i)=>{
+      <div className="commerce-results-head">
+        <h3>带货脚本</h3>
+        {candidates.length>1&&<button className="button" aria-pressed={comparing} onClick={()=>setComparing(value=>!value)}>{comparing?'返回阅读':'对比方案'}</button>}
+      </div>
+      {candidates.length>1&&<div className="commerce-picker" aria-label="选择脚本方案">{candidates.map((item,index)=><button className="button" key={index} aria-pressed={!comparing&&index===candidateIndex} onClick={()=>{setCandidateIndex(index);setComparing(false)}}>{sourceMode?['原意优化版','快节奏成交版','开头测试版'][index]:item.editions.at(-1)!.meta.hook.strategy}</button>)}</div>}
+      {comparing&&<div className="commerce-options commerce-comparison">{candidates.map((candidate,i)=>{
+        const {draft,meta}=candidate.editions.at(-1)!
+        return <article key={i}><h4>{draft.title}</h4><p>{draft.shots[0].copy}</p><p className="muted">{meta.motive.reason}</p><button className="text-button" onClick={()=>{setCandidateIndex(i);setComparing(false)}}>阅读完整稿</button></article>
+      })}</div>}
+      <div className="commerce-document" hidden={comparing}>{candidates.map((candidate,i)=>{
+        if(i!==candidateIndex)return null
         const {draft,meta}=candidate.editions.at(-1)!
         const fullCopy=draft.shots.map(shot=>shot.copy.trim()).join('\n')
         return <article key={i}><h4>{sourceMode?['原意优化版','快节奏成交版','开头测试版'][i]+' · ':''}{draft.title}</h4>
@@ -192,7 +203,7 @@ export function CommercePanel({ready,provider,context,facts,save,open,restored}:
           {[...copyDiagnostics(draft),...salesIssues(draft)].map(issue=><p className="muted" key={issue}>{issue}</p>)}
           {!!meta.risks.length&&<details><summary>宣传合规与时长提示</summary><ul>{meta.risks.map(r=><li key={r}>{r}</li>)}</ul></details>}
           {candidate.editions.length>1&&<details><summary>比较版本</summary>{candidate.editions.map(({draft,meta},j)=><div key={j}><p><strong>第 {j+1} 版 · {meta.changes}</strong></p><p>{draft.shots.map(s=>s.copy).join(' ')}</p></div>)}</details>}
-          <div className="inline-buttons"><button className="button" disabled={!!progress||!candidate.id} onClick={()=>open(candidate.id!)}>编辑与版本</button><button className="button" disabled={!!progress||!ready} onClick={()=>improve(i)}>局部重写</button></div>
+          <div className="commerce-edit"><Field label="局部重写方向" value={focus} options={focuses.map(v=>({value:v,label:v}))} change={setFocus}/><div className="inline-buttons"><button className="button" disabled={!!progress||!candidate.id} onClick={()=>open(candidate.id!)}>编辑与版本</button><button className="button" disabled={!!progress||!ready} onClick={()=>improve(i)}>局部重写</button></div></div>
         </article>
       })}</div>
     </>}

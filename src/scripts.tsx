@@ -18,6 +18,7 @@ import {Badge,Empty,Field,PageHead,Panel} from './ui'
 export function ScriptStudio({db,update,initialInsight,initialScript,initialProduct,initialSource,requestedTab,notify,goAudit,goExperiment}:{db:DB;update:Update;initialInsight:string;initialScript?:string;initialProduct?:string;initialSource?:string;requestedTab?:{view:'script'|'video'|'agent'};notify:(m:string)=>void;goExperiment:(s:string,v:string)=>void;goAudit:(s:string,v:string,input:string,productId:string)=>void}){
   const [tab,setTab]=useState<'script'|'video'|'rules'|'design'>(requestedTab?.view==='video'?'video':'script')
   useEffect(()=>{if(requestedTab)setTab(requestedTab.view==='video'?'video':'script')},[requestedTab])
+  const [libraryOpen,setLibraryOpen]=useState(false)
   const [rule,setRule]=useState<Rule>()
   const [ruleId,setRuleId]=useState('')
   const [designFocus,setDesignFocus]=useState('')
@@ -154,8 +155,11 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
     }} extract={source=>{setRule(ruleDraft(source));setTab('rules')}}/></div>
     <div hidden={tab!=='rules'}><RuleLibrary db={db} update={update} draft={rule} setDraft={setRule} notify={notify} openSource={s=>{setSourceFocus({...s});setTab('video')}} openDesign={id=>{setDesignFocus('');setRuleId(id);setTab('design')}}/></div>
     <div hidden={tab!=='design'}><DesignLibrary key={designFocus} initialDesign={designFocus} db={{...db,facts:productFacts(db,defaultProduct.id)}} update={update} ruleId={ruleId} chooseRule={setRuleId} notify={notify} send={sendDesign} openRule={r=>{setRule(r);setTab('rules')}} openScript={id=>{chooseScript(id);setTab('script')}}/></div>
-    {tab==='script'&&<div className="studio-grid">
-      <aside className="stack studio-library" aria-label="脚本与历史版本">
+    {tab==='script'&&<div className="studio-grid" data-library-open={libraryOpen}>
+      <div className="studio-library-toggle">
+        <button className="button" aria-expanded={libraryOpen} aria-controls="studio-library" onClick={()=>setLibraryOpen(open=>!open)}><History size={16}/> 脚本库与版本</button>
+      </div>
+      <aside className="stack studio-library" id="studio-library" hidden={!libraryOpen} aria-label="脚本与历史版本">
         <Panel title="脚本库" action="新脚本" onAction={()=>{if(dirty&&!window.confirm('开始新脚本会替换当前未保存的分镜。继续？'))return;setPlanning(undefined);setScriptId('');setVersionId('');setShots([]);setTitle(insight?.title||'');setEvidence([]);setDesign('');setMaterial('');setBatch('');setReviews([]);setGeneratedBrief(undefined);setDirty(false)}}>
           {db.scripts.filter(s=>s.versions.some(v=>v.date)).map(s=><button key={s.id} className={'list-button '+(scriptId===s.id?'active':'')} onClick={()=>{if(dirty&&!window.confirm('切换脚本会替换当前未保存的分镜。继续？'))return;setPlanning(undefined);chooseScript(s.id)}}>{s.title}<small>{products.find(p=>p.id===productOf(s.versions[0]))?.name} · {s.versions.length} 个版本</small></button>)}
         </Panel>
@@ -166,7 +170,7 @@ export function ScriptStudio({db,update,initialInsight,initialScript,initialProd
       </aside>
       <div className="stack studio-document">
         <ScriptPlanningPanel key={product.id+'|'+(insight?.id||'none')+'|'+versionId} db={db} product={product} selectProduct={changeProduct} insight={insight} initialSource={planning?.structure.id||initialSource} savedPlanning={planning} savedShots={shots}
-          commerceScript={selected} materialReference={materialReference} selectInsight={changePlanningInsight} accept={acceptPlannedDraft} saveCommerce={saveCommerce} openCommerce={id=>{if(!dirty||window.confirm('切换脚本会替换未保存的分镜。继续？'))chooseScript(id)}}/>
+          commerceScript={selected} materialReference={materialReference} selectInsight={changePlanningInsight} accept={acceptPlannedDraft} saveCommerce={saveCommerce} openCommerce={id=>{if(!dirty||window.confirm('切换脚本会替换未保存的分镜。继续？')){chooseScript(id);requestAnimationFrame(()=>editor.current?.scrollIntoView({block:'start'}))}}}/>
         {!!shots.length&&<>
           <div ref={editor} className="agent-editor"><Panel title="编辑分镜">
             <Field label="脚本标题" value={title} change={v=>{setTitle(v);setDirty(true)}}/>{dirty&&<Badge tone="orange">未保存草稿</Badge>}

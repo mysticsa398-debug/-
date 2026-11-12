@@ -1,7 +1,7 @@
 import {defaultProduct} from './products'
 import {useEffect,useRef,useState} from 'react'
 import {createRoot} from 'react-dom/client'
-import {BookOpen, ChevronRight, Clapperboard, Database, FlaskConical, GitMerge, LayoutDashboard, Menu, ShieldCheck, UsersRound, Sparkles, Wind, X} from 'lucide-react'
+import {BookOpen, Clapperboard, Database, FlaskConical, GitMerge, LayoutDashboard, Menu, ShieldCheck, UsersRound, Sparkles, Wind, X} from 'lucide-react'
 import CreativeLab from './creative'
 import Dashboard,{type Page} from './dashboard'
 import {FactLibrary,InsightLibrary,Matrix,type Update} from './library'
@@ -12,6 +12,7 @@ import {load,save} from './storage'
 import {NoticeContext} from './ui'
 import './style.css'
 import './workspace-design.css'
+import './workspace-layout.css'
 const navigationGroups=[
   {label:'工作台',items:[{page:'overview',label:'工作概览',icon:LayoutDashboard}]},
   {label:'内容制作',items:[
@@ -83,7 +84,7 @@ function App(){
   return <div className="app">
     {menu&&<button className="overlay" onClick={()=>setMenu(false)} aria-label="关闭导航"/>}
     <aside className={'sidebar '+(menu?'show':'')}>
-      <button className="brand" onClick={()=>go('overview')}><span className="brand-icon"><Wind size={23}/></span><b>吹风机内容组<br/>工作台</b></button>
+      <button className="brand" onClick={()=>go('overview')}><span className="brand-icon"><Wind size={23}/></span><b>吹风机内容组</b></button>
       <nav aria-label="工作区导航">
         {navigationGroups.map(group=><div className="nav-group" key={group.label}>
           <div className="nav-label">{group.label}</div>
@@ -93,7 +94,7 @@ function App(){
       <div className="sidebar-bottom"><a className="workspace-settings" href="#data" aria-current={page==='data'?'page':undefined} onClick={e=>{e.preventDefault();go('data')}}><Database size={16}/><span>数据与设置</span></a></div>
     </aside>
     <div className="main-shell">
-      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="打开导航" onClick={()=>setMenu(true)}><Menu size={22}/></button><span>吹风机内容组工作台</span><ChevronRight size={14}/><b>{navigation.find(n=>n.page===page)?.label}</b></div><span className="workspace-local">本地工作区</span></header>
+      <header className="topbar"><div className="breadcrumb"><button className="icon-button mobile-menu" aria-label="打开导航" onClick={()=>setMenu(true)}><Menu size={22}/></button><b>{navigation.find(n=>n.page===page)?.label}</b></div><span className="workspace-local">本地工作区</span></header>
       <main className="content" key={page}><NoticeContext.Provider value={toast}>{views[page]}</NoticeContext.Provider></main>
     </div>
     {toast&&<div className="toast" role="status">{toast}<button className="icon-button" aria-label="关闭提示" onClick={()=>setToast('')}><X size={16}/></button></div>}

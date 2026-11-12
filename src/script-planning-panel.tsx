@@ -4,7 +4,7 @@ import {productsFor,productWorkspace,type Product} from './products'
 import {studioShot,videoCopy} from './studio-engine'
 import {creativeMemory,type GenerationSource} from './creative-memory'
 import {useEffect,useRef,useState} from 'react'
-import {ChevronRight, Plus, Sparkles} from 'lucide-react'
+import {Plus, Sparkles} from 'lucide-react'
 import {type DB,type Fact,type Insight} from './domain'
 import {insightContext,maxScriptSegments,plannedTiming,planningFacts,restoreScriptPlan,scriptFromModel,scriptStructures,strategyContext,validScriptPlan,type ScriptPlan,type ScriptPlanning,type ScriptSegment} from './script-planning'
 import {Badge,Field,Panel} from './ui'
@@ -108,30 +108,19 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
     updateSegments(segments)
   }
   return <Panel title="脚本策划" className="studio-planning">
-    <div className="planning-route" aria-label="创作流程"><span>选择产品、人群与结构</span><ChevronRight size={13}/><span>编辑策划</span><ChevronRight size={13}/><span>生成分镜</span></div>
     <fieldset className="agent-task-fields" disabled={locked}>
       <div className="planning-input-grid">
-        <div className="planning-input">
-      <Field label="创作产品" value={product.id} options={productsFor(db).map(item=>({value:item.id,label:item.name}))} change={selectProduct}/>
-      <p className="muted">{product.category} · <a href="#facts">查看产品库</a></p>
-      <Field label="人群洞察" value={insight?.id||''} options={[{value:'',label:'选择一个人群'},...db.insights.map(i=>({value:i.id,label:i.title}))]}
-        change={id=>{selectInsight(id)}}/>
-      {insight&&<div className="notice planning-insight">
-        <strong>{insight.scene||insight.title}</strong>
-        <span>{insight.pain||insight.barrier||'洞察缺少使用痛点'} · {insight.status}</span>
-      </div>}
-        </div>
-        <div className="planning-input">
-      {structure?<>
-        <Field label="结构来源 · 爆款策略实验室" value={structure.id} options={structures.map(s=>({value:s.id,label:s.status+' · '+s.title}))} change={changeSource}/>
-        <p><Badge tone={structure.status==='报告参考'?'orange':'green'}>{structure.status}</Badge> {structure.basis}</p>
-        <details className="source-note"><summary>查看来源与原投放结构</summary>
-          {!!structure.stages.length&&<ol className="planning-structure">{structure.stages.map((stage,i)=><li key={i}>{stage}</li>)}</ol>}
-          <ul>{structure.sources.map((item,i)=><li key={i}>{/^https:\/\/[^\s]+$/.test(item)?<a href={item} target="_blank" rel="noreferrer">打开参考报告 ↗</a>:item}</li>)}</ul>
-        </details>
-      </>:<p className="muted">选择人群后，可查看适用的结构来源。</p>}
-        </div>
+        <Field label="产品" value={product.id} options={productsFor(db).map(item=>({value:item.id,label:item.name}))} change={selectProduct}/>
+        <Field label="人群洞察" value={insight?.id||''} options={[{value:'',label:'选择一个人群'},...db.insights.map(i=>({value:i.id,label:i.title}))]} change={selectInsight}/>
+        {structure&&<Field label="结构来源" value={structure.id} options={structures.map(s=>({value:s.id,label:s.status+' · '+s.title}))} change={changeSource}/>}
       </div>
+      {insight&&<p className="planning-scene"><strong>{insight.scene||insight.title}</strong> · {insight.pain||insight.barrier||insight.status}</p>}
+      <details className="source-note planning-reference"><summary>策划资料</summary>
+      {structure&&<div>
+        <p>{structure.basis}</p>
+        {!!structure.stages.length&&<ol>{structure.stages.map((stage,i)=><li key={i}>{stage}</li>)}</ol>}
+        <ul>{structure.sources.map((item,i)=><li key={i}>{/^https:\/\/[^\s]+$/.test(item)?<a href={item} target="_blank" rel="noreferrer">打开参考报告 ↗</a>:item}</li>)}</ul>
+      </div>}
       <div className="planning-reference-grid">
       <details className="source-note planning-memory"><summary>创作记忆 · {memory.length} 条匹配记录</summary>
         <label className="row"><input type="checkbox" checked={useMemory} onChange={e=>setUseMemory(e.target.checked)}/> 将这些摘要用于 AI 策划和写稿</label>
@@ -141,6 +130,7 @@ export function ScriptPlanningPanel({db,product,selectProduct,insight,selectInsi
           <p className="muted">{commercialFacts.length?commercialFacts.map(f=>f.id+' '+f.wording).join('、'):'暂无匹配的已核验产品事实。仅生成内部试拍稿。请到产品库核对在售 SKU、原始来源、核验日期与合规措辞。'}</p>
         </details>}
       </div>
+      </details>
       {insight&&structure&&<CommercePanel key={structure.id} ready={status==='ready'} provider={provider}
         context={{product:product.name,productId:product.id,productCategory:product.category,
           insight:insightContext(insight),structure:strategyContext(structure),memory:useMemory?memory:[],facts:commercialFacts,materialReference}}
